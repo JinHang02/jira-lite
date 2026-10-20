@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildJql, searchJql, childrenJql } from "../../web/js/jql.js";
+import { buildJql, searchJql, childrenJql, quote } from "../../web/js/jql.js";
 
 test("buildJql: my open issues", () => {
   assert.equal(buildJql({ project: "BA", who: "mine", showDone: false }),
@@ -29,6 +29,17 @@ test("searchJql drops quotes and backslashes", () => {
   assert.equal(searchJql("BA", 'say "hi"'), 'project = "BA" AND text ~ "say  hi*" ORDER BY updated DESC');
   assert.equal(searchJql("BA", "a\\b"), 'project = "BA" AND text ~ "a b*" ORDER BY updated DESC');
   assert.equal(searchJql("BA", '"\\'), 'project = "BA" AND text ~ "*" ORDER BY updated DESC');
+});
+
+test("buildJql: an epic's children, any assignee, respecting showDone", () => {
+  assert.equal(buildJql({ project: "BA", who: "mine", showDone: false, epic: "BA-7" }),
+    'project = "BA" AND parent = "BA-7" AND statusCategory != Done ORDER BY updated DESC');
+  assert.equal(buildJql({ project: "BA", who: "abc", showDone: true, epic: "BA-7" }), 'project = "BA" AND parent = "BA-7" ORDER BY updated DESC');
+  assert.equal(buildJql({ project: "BA", who: "all", showDone: true, epic: null }), 'project = "BA" ORDER BY updated DESC');
+});
+
+test("quote escapes quotes and backslashes", () => {
+  assert.equal(quote('a"b\\c'), '"a\\"b\\\\c"');
 });
 
 test("childrenJql", () => {
