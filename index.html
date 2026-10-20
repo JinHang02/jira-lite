@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jira-lite</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%230b57d0'/></svg>">
+<style>
+  :root {
+    --bg: #fff; --fg: #1d1d1f; --muted: #6b6b70; --line: #e4e4e7; --hover: #f4f4f5;
+    --sel: #e8f0fe; --accent: #0b57d0; --err: #b3261e;
+    --new: #e4e4e7; --prog: #d3e3fd; --done: #c4eed0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #18181b; --fg: #e4e4e7; --muted: #a1a1aa; --line: #2e2e33; --hover: #232328;
+      --sel: #1e2a40; --accent: #8ab4f8; --err: #f2b8b5;
+      --new: #3f3f46; --prog: #1f3a63; --done: #1d4a2c;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--fg); font: 14px/1.45 system-ui, -apple-system, sans-serif; display: flex; flex-direction: column; }
+  header { display: flex; gap: 12px; align-items: center; padding: 8px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  header strong { font-size: 15px; }
+  select, button, textarea { font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
+  button { cursor: pointer; }
+  button:hover { background: var(--hover); }
+  button:disabled { opacity: .5; cursor: default; }
+  #msg { margin-left: auto; color: var(--muted); font-size: 12px; }
+  #msg.err { color: var(--err); }
+  main { flex: 1; display: flex; min-height: 0; }
+  #list { flex: 1; overflow: auto; min-width: 0; }
+  #detail { width: 46%; overflow: auto; border-left: 1px solid var(--line); padding: 16px 20px; }
+  #detail:empty::before { content: "Select a ticket"; color: var(--muted); }
+  table { border-collapse: collapse; width: 100%; }
+  #list th { position: sticky; top: 0; background: var(--bg); text-align: left; font-weight: 500; color: var(--muted); font-size: 12px; border-bottom: 1px solid var(--line); }
+  #list th, #list td { padding: 6px 10px; white-space: nowrap; }
+  #list td.sum { white-space: normal; width: 100%; }
+  #list tbody tr { cursor: pointer; border-bottom: 1px solid var(--line); }
+  #list tbody tr:hover { background: var(--hover); }
+  #list tbody tr.sel { background: var(--sel); }
+  .key { color: var(--muted); font-size: 12px; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; background: var(--new); }
+  .pill.indeterminate { background: var(--prog); }
+  .pill.done { background: var(--done); }
+  .small { color: var(--muted); font-size: 12px; }
+  #detail h2 { margin: 4px 0 8px; font-size: 18px; font-weight: 600; }
+  .meta { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+  .meta a { color: var(--accent); }
+  h3.sec { font-size: 13px; color: var(--muted); font-weight: 500; margin: 20px 0 6px; text-transform: uppercase; letter-spacing: .04em; }
+  .adf p { margin: 0 0 8px; }
+  .adf pre { background: var(--hover); padding: 8px; border-radius: 6px; overflow: auto; }
+  .adf code { background: var(--hover); padding: 0 3px; border-radius: 3px; }
+  .adf blockquote { border-left: 3px solid var(--line); margin: 0 0 8px; padding-left: 10px; color: var(--muted); }
+  .adf table td, .adf table th { border: 1px solid var(--line); padding: 4px 6px; }
+  .adf .panel { background: var(--hover); padding: 8px 10px; border-radius: 6px; margin-bottom: 8px; }
+  .adf a { color: var(--accent); }
+  .adf img { max-width: 100%; }
+  .comment { border-top: 1px solid var(--line); padding: 10px 0; }
+  .comment .who { font-weight: 500; }
+  #cbox { width: 100%; min-height: 70px; resize: vertical; }
+  .row { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+  .err { color: var(--err); }
+  @media (max-width: 800px) {
+    main { flex-direction: column; }
+    #detail { width: auto; border-left: 0; border-top: 1px solid var(--line); }
+    #list .hide-sm { display: none; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <strong>jira-lite</strong>
+  <select id="who" title="Assignee filter">
+    <option value="mine">Mine</option>
+    <option value="all">Everyone</option>
+  </select>
+  <label><input type="checkbox" id="showDone"> Show Done</label>
+  <button id="refresh" title="Refresh (auto every 60s)">Refresh</button>
+  <span id="msg"></span>
+</header>
+<main>
+  <div id="list"></div>
+  <div id="detail"></div>
+</main>
+<script>
+const FIELDS = ["summary", "status", "priority", "assignee", "updated"];
+const REFRESH_MS = 60000;
+const $ = (s) => document.querySelector(s);
+const enc = encodeURIComponent;
+let cfg = { project: "BA", site: "" };
+let issues = [];
+let current = null;     // selected issue key
+let listSeq = 0, detailSeq = 0, lastRefresh = 0;
+let busy = false;       // a write is in flight; skip auto-refresh
+
+// ---------- helpers ----------
+function el(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === "class") e.className = v;
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v);
+  }
+  for (const k of kids.flat()) if (k != null) e.append(k instanceof Node ? k : String(k));
+  return e;
+}
+
+async function api(path, body) {
+  const opts = { headers: { "X-Jira-Lite": "1" } };
+  if (body !== undefined) {
+    opts.method = "POST";
+    opts.headers["Content-Type"] = "application/json";
+    opts.body = JSON.stringify(body);
+  }
+  const r = await fetch("/jira/" + path, opts);
+  const text = await r.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch (e) { /* non-JSON error page */ }
+  if (!r.ok) {
+    const parts = data ? [...(data.errorMessages || []), ...Object.values(data.errors || {})] : [];
+    throw new Error(parts.join("; ") || ("HTTP " + r.status + (text ? ": " + text.slice(0, 200) : "")));
+  }
+  return data;
+}
+
+function say(text, isErr) {
+  const m = $("#msg");
+  m.textContent = text;
+  m.className = isErr ? "err" : "";
+}
+
+function ago(iso) {
+  const s = (Date.now() - new Date(iso)) / 1000;
+  if (s < 60) return "just now";
+  if (s < 3600) return Math.floor(s / 60) + "m ago";
+  if (s < 86400) return Math.floor(s / 3600) + "h ago";
+  if (s < 86400 * 30) return Math.floor(s / 86400) + "d ago";
+  return new Date(iso).toLocaleDateString();
+}
+
+function pill(status) {
+  return el("span", { class: "pill " + ((status.statusCategory || {}).key || "") }, status.name);
+}
+
+function store(k, v) { try { localStorage.setItem("jl." + k, v); } catch (e) {} }
+function recall(k) { try { return localStorage.getItem("jl." + k); } catch (e) { return null; } }
+
+// ---------- ADF (Atlassian Document Format) -> DOM, text only, no innerHTML ----------
+const BLOCKS = {
+  paragraph: "p", bulletList: "ul", orderedList: "ol", listItem: "li", blockquote: "blockquote",
+  table: "table", tableRow: "tr", tableHeader: "th", tableCell: "td", taskList: "ul", decisionList: "ul",
+};
+function safeUrl(u) { return /^(https?:|mailto:)/i.test(u || "") ? u : null; }
+function adf(node) {
+  if (!node) return document.createTextNode("");
+  const kids = () => (node.content || []).map(adf);
+  const a = node.attrs || {};
+  switch (node.type) {
+    case "doc": return el("div", { class: "adf" }, kids());
+    case "text": {
+      let out = document.createTextNode(node.text || "");
+      for (const m of node.marks || []) {
+        const tag = { strong: "b", em: "i", code: "code", strike: "s", underline: "u" }[m.type];
+        if (tag) out = el(tag, {}, out);
+        else if (m.type === "link" && safeUrl(m.attrs && m.attrs.href)) {
+          out = el("a", { href: m.attrs.href, target: "_blank", rel: "noopener" }, out);
+        }
+      }
+      return out;
+    }
+    case "heading": return el("h" + Math.min(Math.max(a.level || 3, 3), 6), {}, kids());
+    case "codeBlock": return el("pre", {}, el("code", {}, kids()));
+    case "hardBreak": return el("br");
+    case "rule": return el("hr");
+    case "panel": return el("div", { class: "panel" }, kids());
+    case "expand": case "nestedExpand": return el("details", {}, el("summary", {}, a.title || "More"), kids());
+    case "taskItem": case "decisionItem": return el("li", {}, a.state === "DONE" || a.state === "DECIDED" ? "☑ " : "☐ ", kids());
+    case "mention": return el("b", {}, a.text || "@someone");
+    case "emoji": return document.createTextNode(a.text || a.shortName || "");
+    case "status": return el("span", { class: "pill" }, a.text || "");
+    case "date": return document.createTextNode(new Date(Number(a.timestamp)).toLocaleDateString());
+    case "inlineCard": case "blockCard": case "embedCard":
+      return safeUrl(a.url) ? el("a", { href: a.url, target: "_blank", rel: "noopener" }, a.url) : document.createTextNode("");
+    case "mediaSingle": case "mediaGroup": case "media": case "mediaInline":
+      return el("span", { class: "small" }, "[attachment: open in Jira] ");
+  }
+  if (BLOCKS[node.type]) return el(BLOCKS[node.type], {}, kids());
+  return el("span", {}, kids());  // unknown node: keep its text
+}
+
+function textToAdf(text) {
+  return {
+    type: "doc", version: 1,
+    content: text.trim().split(/\n\s*\n/).map((para) => {
+      const content = [];
+      para.split("\n").forEach((line, i) => {
+        if (i) content.push({ type: "hardBreak" });
+        if (line) content.push({ type: "text", text: line });
+      });
+      return { type: "paragraph", content };
+    }),
+  };
+}
+
+// ---------- list ----------
+function buildJql() {
+  const who = $("#who").value;
+  let jql = 'project = "' + cfg.project + '"';
+  if (who === "mine") jql += " AND assignee = currentUser()";
+  else if (who !== "all") jql += ' AND assignee = "' + who + '"';
+  if (!$("#showDone").checked) jql += " AND statusCategory != Done";
+  return jql + " ORDER BY updated DESC";
+}
+
+async function loadList() {
+  const seq = ++listSeq;
+  say("Loading…");
+  try {
+    const jql = buildJql();
+    const out = [];
+    let token;
+    for (let page = 0; page < 5; page++) {  // cap at 500 issues
+      const body = { jql, fields: FIELDS, maxResults: 100 };
+      if (token) body.nextPageToken = token;
+      const r = await api("search/jql", body);
+      out.push(...(r.issues || []));
+      token = r.nextPageToken;
+      if (!token || r.isLast) break;
+    }
+    if (seq !== listSeq) return;  // a newer load started meanwhile
+    issues = out;
+    renderList();
+    lastRefresh = Date.now();
+    say(issues.length + " tickets · updated " + new Date().toLocaleTimeString());
+  } catch (e) {
+    if (seq === listSeq) say("List failed: " + e.message, true);
+  }
+}
+
+function renderList() {
+  const rows = issues.map((i) => {
+    const f = i.fields;
+    return el("tr", { class: i.key === current ? "sel" : "", "data-key": i.key, onclick: () => openIssue(i.key) },
+      el("td", { class: "key" }, i.key),
+      el("td", { class: "sum" }, f.summary),
+      el("td", {}, pill(f.status)),
+      el("td", { class: "hide-sm small" }, f.priority ? f.priority.name : ""),
+      el("td", { class: "hide-sm" }, f.assignee ? f.assignee.displayName : el("span", { class: "small" }, "Unassigned")),
+      el("td", { class: "hide-sm small", title: f.updated }, ago(f.updated)));
+  });
+  const table = el("table", {},
+    el("thead", {}, el("tr", {}, ["Key", "Summary", "Status", "Priority", "Assignee", "Updated"].map((h, n) =>
+      el("th", { class: n >= 3 ? "hide-sm" : "" }, h)))),
+    el("tbody", {}, rows));
+  $("#list").replaceChildren(rows.length ? table : el("p", { class: "small", style: "padding:16px" }, "No tickets match."));
+}
+
+// ---------- detail ----------
+function openIssue(key) {
+  current = key;
+  history.replaceState(null, "", "#" + key);
+  for (const tr of document.querySelectorAll("#list tbody tr")) tr.classList.toggle("sel", tr.dataset.key === key);
+  $("#detail").replaceChildren(el("p", { class: "small" }, "Loading " + key + "…"));
+  loadDetail();
+}
+
+async function loadDetail() {
+  const key = current;
+  if (!key) return;
+  const seq = ++detailSeq;
+  try {
+    const [issue, trans, comments] = await Promise.all([
+      api("issue/" + enc(key) + "?fields=summary,status,description,assignee,reporter,priority,issuetype"),
+      api("issue/" + enc(key) + "/transitions"),
+      api("issue/" + enc(key) + "/comment?orderBy=-created&maxResults=100"),
+    ]);
+    if (seq !== detailSeq || key !== current) return;
+    renderDetail(issue, trans.transitions || [], comments.comments || []);
+  } catch (e) {
+    if (seq === detailSeq) $("#detail").replaceChildren(el("p", { class: "err" }, key + ": " + e.message));
+  }
+}
+
+function renderDetail(issue, transitions, comments) {
+  const f = issue.fields;
+  const d = $("#detail");
+  // Keep an unsent comment draft across auto-refreshes.
+  const oldBox = $("#cbox");
+  const draft = oldBox && oldBox.dataset.key === issue.key ? oldBox.value : "";
+
+  const sel = el("select", { id: "status", title: "Change status" },
+    el("option", { value: "" }, f.status.name + " (current)"),
+    transitions.filter((t) => t.to.id !== f.status.id).map((t) =>
+      el("option", { value: t.id }, t.name === t.to.name ? "→ " + t.name : t.name + " → " + t.to.name)));
+  sel.addEventListener("change", () => sel.value && transition(issue.key, sel.value, sel));
+
+  const box = el("textarea", { id: "cbox", placeholder: "Add a comment (Cmd/Ctrl+Enter to send)" });
+  box.dataset.key = issue.key;
+  box.value = draft;
+  const send = el("button", {}, "Comment");
+  const cmsg = el("span", { class: "small" });
+  const submit = () => postComment(issue.key, box, send, cmsg);
+  send.addEventListener("click", submit);
+  box.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit(); });
+
+  d.replaceChildren(
+    el("div", { class: "key" }, (f.issuetype ? f.issuetype.name + " · " : "") + issue.key),
+    el("h2", {}, f.summary),
+    el("div", { class: "meta" },
+      sel,
+      el("span", {}, f.assignee ? f.assignee.displayName : "Unassigned"),
+      f.priority ? el("span", { class: "small" }, f.priority.name) : null,
+      el("a", { href: cfg.site + "/browse/" + issue.key, target: "_blank", rel: "noopener" }, "Open in Jira ↗")),
+    el("div", { id: "tmsg", class: "small" }),
+    el("h3", { class: "sec" }, "Description"),
+    f.description ? adf(f.description) : el("p", { class: "small" }, "No description."),
+    el("h3", { class: "sec" }, "Comments (" + comments.length + ")"),
+    box,
+    el("div", { class: "row" }, send, cmsg),
+    ...comments.map((c) => el("div", { class: "comment" },
+      el("div", {}, el("span", { class: "who" }, c.author ? c.author.displayName : "?"), " ",
+        el("span", { class: "small", title: c.created }, ago(c.created))),
+      adf(c.body))));
+  if (draft && document.activeElement === document.body) box.focus();
+}
+
+async function transition(key, id, sel) {
+  busy = true;
+  sel.disabled = true;
+  $("#tmsg").textContent = "Saving…";
+  try {
+    await api("issue/" + enc(key) + "/transitions", { transition: { id } });
+    await Promise.all([loadDetail(), loadList()]);
+  } catch (e) {
+    $("#tmsg").replaceChildren(el("span", { class: "err" }, "Status change failed: " + e.message +
+      " (if it needs extra fields, use Open in Jira)"));
+    sel.value = "";
+    sel.disabled = false;
+  } finally {
+    busy = false;
+  }
+}
+
+async function postComment(key, box, btn, msg) {
+  if (!box.value.trim() || btn.disabled) return;
+  busy = true;
+  btn.disabled = true;
+  msg.className = "small";
+  msg.textContent = "Sending…";
+  try {
+    await api("issue/" + enc(key) + "/comment", { body: textToAdf(box.value) });
+    box.value = "";
+    await loadDetail();
+  } catch (e) {
+    msg.className = "err";
+    msg.textContent = "Comment failed: " + e.message;
+    btn.disabled = false;
+  } finally {
+    busy = false;
+  }
+}
+
+// ---------- startup ----------
+function refresh() {
+  if (busy) return;
+  loadList();
+  // Don't yank the status dropdown out from under the user.
+  if (current && document.activeElement !== $("#status")) loadDetail();
+}
+
+async function loadPeople() {
+  try {
+    const users = await api("user/assignable/search?project=" + enc(cfg.project) + "&maxResults=1000");
+    users.filter((u) => u.accountType === "atlassian")
+      .sort((a, b) => a.displayName.localeCompare(b.displayName))
+      .forEach((u) => $("#who").append(el("option", { value: u.accountId }, u.displayName)));
+    const saved = recall("who");
+    if (saved && [...$("#who").options].some((o) => o.value === saved) && $("#who").value !== saved) {
+      $("#who").value = saved;
+      loadList();
+    }
+  } catch (e) {
+    say("Couldn't load people: " + e.message, true);
+  }
+}
+
+(async function init() {
+  try { cfg = await (await fetch("/config")).json(); } catch (e) {}
+  document.title = "jira-lite · " + cfg.project;
+  const saved = recall("who");
+  if (saved === "all") $("#who").value = "all";  // person ids get restored once people load
+  $("#showDone").checked = recall("showDone") === "1";
+  $("#who").addEventListener("change", () => { store("who", $("#who").value); loadList(); });
+  $("#showDone").addEventListener("change", () => { store("showDone", $("#showDone").checked ? "1" : "0"); loadList(); });
+  $("#refresh").addEventListener("click", refresh);
+  setInterval(() => { if (!document.hidden) refresh(); }, REFRESH_MS);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && Date.now() - lastRefresh > REFRESH_MS) refresh();
+  });
+  loadList();
+  loadPeople();
+  if (location.hash.length > 1) openIssue(decodeURIComponent(location.hash.slice(1)));
+})();
+</script>
+</body>
+</html>
