@@ -43,7 +43,8 @@ Security invariants that tests enforce — keep them when changing the server:
 **Frontend (`web/`)** — `index.html` is markup only; `css/tokens.css` holds all colors (light + dark via `prefers-color-scheme`), derived from Linear's theme. `js/main.js` is the only bootstrap. Module conventions that span files:
 - `state.js` exports one shared mutable `state` object (data, view state, persisted prefs via `localStorage` under `jl.*`).
 - Views never import each other. Cross-view calls go through `actions.js` (`actions.openIssue(...)` etc.), which `main.js` wires once. Adding a new cross-view entry point means adding its name to `NAMES` in `actions.js` and passing it to `wire()` in `main.js` (wire throws on missing/unknown names).
-- Pure modules — `status.js`, `jql.js`, `adf.js` helpers, `format.js`, `issues.js` — must not touch `document`/`window` at import time; they are what `tests/js/` covers.
+- Pure modules — `status.js`, `jql.js`, `adf.js` helpers, `format.js`, `issues.js`, `sync.js`, `display.js` (grouping/ordering), `people.js`, `priorities.js`, `props.js`, `activity.js` (changelog + comments timeline), `shortcuts.js` — must not touch `document`/`window` at import time; they are what `tests/js/` covers (one `*.test.mjs` per module). Put new logic in a pure module with a test and keep the DOM module thin.
+- The proxy forwards GET, POST, PUT and DELETE (comment delete); every write path needs the `X-Jira-Lite` header and, in OAuth mode, a matching `Origin`.
 - `api.js` is the only place that talks to the server; it uses `POST /search/jql` with `nextPageToken` pagination (the old `/search` endpoint is deprecated).
 
 **Jira-specific behavior worth knowing:**
