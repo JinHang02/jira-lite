@@ -20,7 +20,13 @@ make cert HOSTS="192.168.0.113 host.local"   # local CA + server cert in certs/ 
 # single tests
 python3 -m unittest tests.python.test_config.ExposureSettingsTest.test_public_hosts_are_split_and_trimmed
 node --test --test-name-pattern "buildJql" tests/js/jql.test.mjs
+
+# end-to-end testing (fake Jira, never the real one)
+python3 -m unittest discover -s tests/e2e -t .                  # smoke test: app proxy + mock, all write paths
+python3 tests/e2e/mock_jira.py --port 9900 --app-port 8900      # mock Jira + app on http://localhost:8900 (ignores .env)
+python3 tests/e2e/mock_jira.py --port 9900 --log /tmp/jira.jsonl --latency-ms 300   # mock only; GET /__mock/requests, POST /__mock/reset
 ```
+`tests/e2e/CHECKLIST.md` lists every UI flow with its expected result (manual / Playwright). JQL or endpoints the mock doesn't know answer 400/404 with an `errorMessages` entry — extend `mock_jira.py` when the frontend starts sending something new.
 
 `python3 server.py` is a shim for `python3 -m jira_lite`. Config lives in `.env` (see `.env.example`); `JIRA_*`/`JIRA_LITE_*` process env vars override it, `PORT` comes from the environment only.
 
