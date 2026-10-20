@@ -124,6 +124,10 @@ function renderDetail(issue, comments, children, { customs, histories, olderHidd
   // Keep an unsent comment draft and the scroll position across auto-refreshes.
   const oldBox = $("#cbox");
   const draft = oldBox && oldBox.dataset.key === issue.key ? oldBox.value : stashedComment(issue.key);
+  // Someone typing in the box while the panel re-renders must keep focus: otherwise the next keys
+  // land on the page and run shortcuts (j/k move, s/p/a open menus) instead of being typed.
+  const caret = oldBox && oldBox.dataset.key === issue.key && document.activeElement === oldBox
+    ? [oldBox.selectionStart, oldBox.selectionEnd] : null;
   const scroll = d.querySelector(".dscroll[data-key='" + CSS.escape(issue.key) + "']");
   const scrollTop = scroll ? scroll.scrollTop : 0;
   const jiraUrl = browseUrl(issue.key);
@@ -185,6 +189,10 @@ function renderDetail(issue, comments, children, { customs, histories, olderHidd
   const body = el("div", { class: "dscroll", "data-key": issue.key }, main);
   d.replaceChildren(header(issue.key), body);
   body.scrollTop = scrollTop;
+  if (caret) {
+    box.focus({ preventScroll: true });
+    box.setSelectionRange(caret[0], caret[1]);
+  }
 }
 
 /** A comment draft for `key` saved before a sign-in round trip (see auth.requireLogin), or "". */

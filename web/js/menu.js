@@ -1,6 +1,6 @@
 // Popover menu anchored to a button (status / priority / assignee pickers), and free-form popovers
 // (the Display options). One open at a time.
-import { el, icon, ICONS } from "./dom.js";
+import { el, icon, ICONS, typingIn } from "./dom.js";
 
 let menu = null;  // {box, search, buttons, idx, popover?, anchor?}
 
@@ -94,6 +94,12 @@ export function closeMenu() {
  */
 export function menuKey(e) {
   if (!menu) return false;
+  // Focus has moved to a text field outside the menu (Tab, or a programmatic focus): the menu is
+  // stale. Close it and let the key be typed instead of steering the menu (j/k/digits/Enter).
+  if (typingIn(e.target) && !menu.box.contains(e.target)) {
+    closeMenu();
+    return false;
+  }
   const k = e.key;
   if (menu.popover) {
     if (k !== "Escape") return false;
@@ -118,5 +124,10 @@ export function installMenuDismiss() {
     if (!menu || menu.box.contains(e.target)) return;
     if (menu.anchor && menu.anchor.contains(e.target)) return;  // the anchor's click handler toggles
     closeMenu();
+  });
+  // Keyboard focus leaving for another text field closes the menu too (a click already does).
+  document.addEventListener("focusin", (e) => {
+    if (!menu || menu.box.contains(e.target) || (menu.anchor && menu.anchor.contains(e.target))) return;
+    if (typingIn(e.target)) closeMenu();
   });
 }
