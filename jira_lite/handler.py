@@ -7,7 +7,12 @@ Routes:
   GET  /oauth/login          -> start "Sign in with Atlassian" (OAuth mode only)
   GET  /oauth/callback       -> finish it (OAuth mode only)
   GET|POST|PUT|DELETE /jira/* -> Jira proxy (needs ``X-Jira-Lite: 1``)
+  GET  /files/{content|thumbnail}/{id} -> attachment download (same-origin pages only, see
+                               :mod:`files`)
   GET  anything else         -> static file from the web root
+
+Request bodies over :data:`~jira_lite.proxy.MAX_BODY` bytes are refused with 413 before
+they are read.
 
 Every request must carry an allowed ``Host`` (``localhost:PORT``,
 ``127.0.0.1:PORT``, configured public hosts, the base URL's host): this
@@ -23,11 +28,11 @@ frontend can tell it apart from a 401 relayed from Jira.
 import json
 import sys
 from http.server import BaseHTTPRequestHandler
-from typing import TYPE_CHECKING, Iterable, Tuple
+from typing import TYPE_CHECKING, Iterable, Optional, Tuple
 
-from . import static
+from . import files, static
 from .auth import LOGIN_REQUIRED_BODY, LoginRequired, Reply
-from .proxy import ProxyResponse, UnsafePathError, match_prefix
+from .proxy import MAX_BODY, ProxyResponse, UnsafePathError, error_response, match_prefix
 
 if TYPE_CHECKING:  # pragma: no cover
     from .app import JiraLiteServer
@@ -66,6 +71,8 @@ class Handler(BaseHTTPRequestHandler):
                         else auth.callback(query, self.headers.get("Cookie")))
         elif match_prefix(path) is not None:
             self._proxy()
+        elif path.startswith(files.FILE_PREFIX):
+            self._file(path)
         else:
             self._static(path)
 
@@ -116,19 +123,39 @@ class Handler(BaseHTTPRequestHandler):
         if match_prefix(self.path) is None:
             return self._send(404, b"not found", TEXT)
         body = self._read_body()  # always drained, so the connection stays in sync
+        if body is None:
+            return
         if self.command not in ("POST", "PUT"):
             body = None  # GET/DELETE are forwarded without a body
-        auth = self.server.auth
         try:
-            if auth is None:
-                result = self.server.proxy.forward(self.command, self.path, body)
-            else:
-                result = auth.forward(self.command, self.path, body, self.headers.get("Cookie"))
+            result = self._forward(self.command, self.path, body, self.headers.get("Content-Type"))
         except UnsafePathError:
             return self._send(400, b"bad path", TEXT)
         except LoginRequired:
             return self._login_required()
         self._relay(result)
+
+    def _forward(self, method: str, path: str, body: Optional[bytes], content_type: Optional[str]) -> ProxyResponse:
+        auth = self.server.auth
+        if auth is None:
+            return self.server.proxy.forward(method, path, body, content_type)
+        return auth.forward(method, path, body, self.headers.get("Cookie"), content_type)
+
+    def _file(self, path: str) -> None:
+        """An attachment (or its thumbnail) for <img>/<a>; see :mod:`files`."""
+        if not files.fetch_allowed(self.headers, self.server.allowed_origins):
+            return self._send(403, b"cross-site file request", TEXT)
+        target = files.proxy_path(path)
+        if target is None:
+            return self._send(404, b"not found", TEXT)
+        try:
+            result = self._forward("GET", target, None, None)
+        except LoginRequired:
+            return self._login_required()
+        if 300 <= result.status < 400 and not files.redirect_ok(dict(result.headers).get("Location")):
+            result = error_response("unexpected redirect from Jira")
+        headers = files.file_headers(result.status, result.headers)
+        self._send(result.status, result.body, result.content_type, headers)
 
     def _auth_me(self) -> None:
         if self.server.auth is None:
@@ -139,7 +166,7 @@ class Handler(BaseHTTPRequestHandler):
             self._login_required()
 
     def _logout(self) -> None:
-        if not self._has_proxy_header():
+        if not self._has_proxy_header() or self._read_body() is None:
             return
         if self.server.auth is None:
             return self._send_empty(204)
@@ -152,14 +179,29 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, static.read(full), static.content_type(full))
 
     # -- helpers ----------------------------------------------------------
-    def _read_body(self) -> bytes:
-        length = int(self.headers.get("Content-Length") or 0)
+    def _read_body(self) -> Optional[bytes]:
+        """The request body, or None after answering 400/413 (bad or too large Content-Length).
+        A refused body is not read, so the connection is closed afterwards."""
+        raw = self.headers.get("Content-Length") or "0"
+        try:
+            length = int(raw)
+        except ValueError:
+            length = -1
+        if length < 0:
+            self.close_connection = True
+            self._send(400, b"bad Content-Length", TEXT)
+            return None
+        if length > MAX_BODY:
+            self.close_connection = True
+            self._send(413, b"request body too large (max %d MB)" % (MAX_BODY // (1024 * 1024)), TEXT,
+                       (("Connection", "close"),))
+            return None
         return self.rfile.read(length)
 
     def _relay(self, result: ProxyResponse) -> None:
         if result.status == 204:  # e.g. Jira's answer to DELETE
             return self._send_empty(204)
-        self._send(result.status, result.body, result.content_type)
+        self._send(result.status, result.body, result.content_type, result.headers)
 
     def _login_required(self) -> None:
         self._send(401, LOGIN_REQUIRED_BODY, "application/json", ((AUTH_HEADER, "login"),))

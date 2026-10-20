@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { fieldText, localDay, dueState, parseLabels, requiredCustomFields } from "../../web/js/props.js";
+import { fieldText, localDay, dueState, parseLabels, requiredCustomFields, parentAllowed, epicTypeName, epicJql, filterEpics } from "../../web/js/props.js";
 
 test("fieldText: options, versions, users, arrays, scalars", () => {
   assert.equal(fieldText(null), "");
@@ -42,4 +42,38 @@ test("requiredCustomFields picks required customfield_* entries only", () => {
   ];
   assert.deepEqual(requiredCustomFields(meta), [{ id: "customfield_10034", name: "Client" }]);
   assert.deepEqual(requiredCustomFields(null), []);
+});
+
+test("parentAllowed: standard types only (not epics, not sub-tasks)", () => {
+  assert.equal(parentAllowed({ name: "New Feature", hierarchyLevel: 0 }), true);
+  assert.equal(parentAllowed({ name: "Epic", hierarchyLevel: 1 }), false);
+  assert.equal(parentAllowed({ name: "Initiative", hierarchyLevel: 2 }), false);
+  assert.equal(parentAllowed({ name: "Sub-task", subtask: true, hierarchyLevel: -1 }), false);
+  assert.equal(parentAllowed({ name: "Epic" }), false);
+  assert.equal(parentAllowed({ name: "Task" }), true);
+  assert.equal(parentAllowed(null), false);
+});
+
+test("epicTypeName: the level-1 type, else Epic", () => {
+  assert.equal(epicTypeName([{ name: "Task", hierarchyLevel: 0 }, { name: "Feature Set", hierarchyLevel: 1 }]), "Feature Set");
+  assert.equal(epicTypeName([]), "Epic");
+  assert.equal(epicTypeName(undefined), "Epic");
+});
+
+test("epicJql: open epics, key lookup or summary prefix search", () => {
+  const base = 'project = "BA" AND issuetype = "Epic" AND statusCategory != Done';
+  assert.equal(epicJql("BA"), base + " ORDER BY updated DESC");
+  assert.equal(epicJql("BA", "  onboarding rev "), base + ' AND summary ~ "onboarding rev*" ORDER BY updated DESC');
+  assert.equal(epicJql("BA", "ba-12"), base + ' AND key = "BA-12" ORDER BY updated DESC');
+  assert.equal(epicJql("BA", 'a "b" (c) \\ d:e'), base + ' AND summary ~ "a b c d e*" ORDER BY updated DESC');
+  assert.equal(epicJql("BA", '"*?'), base + " ORDER BY updated DESC");
+  assert.equal(epicJql("BA", "x", 'My "Epic"'), 'project = "BA" AND issuetype = "My  Epic " AND statusCategory != Done AND summary ~ "x*" ORDER BY updated DESC');
+});
+
+test("filterEpics by key or summary", () => {
+  const epics = [{ key: "BA-1", fields: { summary: "Onboarding revamp" } }, { key: "BA-22", fields: { summary: "Billing" } }];
+  assert.deepEqual(filterEpics(epics, "bill").map((e) => e.key), ["BA-22"]);
+  assert.deepEqual(filterEpics(epics, "ba-1").map((e) => e.key), ["BA-1"]);
+  assert.equal(filterEpics(epics, "").length, 2);
+  assert.deepEqual(filterEpics(null, "x"), []);
 });

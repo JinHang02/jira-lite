@@ -72,7 +72,7 @@ class ForwardTest(unittest.TestCase):
 
     def test_get(self):
         r = self.proxy(_Resp(200, b'{"ok":1}', "application/json;charset=UTF-8")).forward("GET", "/jira/myself")
-        self.assertEqual(r, (200, b'{"ok":1}', "application/json;charset=UTF-8"))
+        self.assertEqual(r[:3], (200, b'{"ok":1}', "application/json;charset=UTF-8"))
         req, timeout = self.calls[0]
         self.assertEqual((req.get_method(), req.full_url, timeout), ("GET", SITE + "/rest/api/3/myself", 3))
         self.assertEqual(req.get_header("Authorization"), "Basic abc")
@@ -95,7 +95,7 @@ class ForwardTest(unittest.TestCase):
         hdrs["Content-Type"] = "application/json"
         err = urllib.error.HTTPError(SITE, 404, "Not Found", hdrs, io.BytesIO(b'{"errorMessages":["nope"]}'))
         r = self.proxy(err).forward("GET", "/jira/issue/NOPE-1")
-        self.assertEqual(r, (404, b'{"errorMessages":["nope"]}', "application/json"))
+        self.assertEqual(r[:3], (404, b'{"errorMessages":["nope"]}', "application/json"))
 
     def test_network_errors_become_502(self):
         for exc in (socket.timeout("timed out"), urllib.error.URLError("refused"), ConnectionResetError()):

@@ -1,5 +1,7 @@
 // Atlassian Document Format: render to DOM (text only, no innerHTML) and pure plain-text helpers.
 import { el, icon, toast } from "./dom.js";
+import { splitMentions } from "./mentions.js";
+import { findAttachment, isImage, fileUrl, formatSize } from "./attachments.js";
 
 const BLOCKS = {
   paragraph: "p", bulletList: "ul", orderedList: "ol", listItem: "li", blockquote: "blockquote",
@@ -84,7 +86,7 @@ function codeBlock(node) {
   return el("div", { class: "codeblock" }, lang ? el("span", { class: "lang" }, lang) : null, copy, el("pre", {}, el("code", {}, text)));
 }
 
-/** "[file] name · open in Jira" chip for media, which the proxy can't show inline. */
+/** "[file] name · open in Jira" chip for media that matches no attachment of the issue. */
 function mediaChip(a, opts) {
   const name = a.alt || a.name || "Attachment";
   const kids = [icon(14, FILE_SVG, ""), el("span", { class: "attname" }, name), el("span", { class: "attvia" }, "open in Jira")];
@@ -93,9 +95,33 @@ function mediaChip(a, opts) {
     : el("span", { class: "att", title: name + " — attachments open in Jira" }, kids);
 }
 
+/** Chip for a known attachment: opens the file (through /files/) in a new tab. */
+function fileChip(att) {
+  return el("a", { class: "att", href: fileUrl(att.id), target: "_blank", rel: "noopener", title: att.filename + " · " + formatSize(att.size) },
+    icon(14, FILE_SVG, ""), el("span", { class: "attname" }, att.filename), el("span", { class: "attvia" }, formatSize(att.size)));
+}
+
+/**
+ * A media node: the matching image attachment inline (click opens it full size), a file chip
+ * for other matched attachments, else the "open in Jira" chip. A broken image falls back to
+ * the chip.
+ */
+function media(a, opts) {
+  const att = findAttachment(a, opts.attachments);
+  if (!att) return mediaChip(a, opts);
+  if (!isImage(att)) return fileChip(att);
+  const w = Number(a.width) || 0, h = Number(a.height) || 0;
+  const img = el("img", { src: fileUrl(att.id), alt: att.filename, loading: "lazy", decoding: "async",
+    width: w > 0 ? String(w) : null, height: h > 0 ? String(h) : null });
+  const link = el("a", { class: "adf-img", href: fileUrl(att.id), target: "_blank", rel: "noopener", title: att.filename }, img);
+  img.addEventListener("error", () => link.replaceWith(fileChip(att)), { once: true });
+  return link;
+}
+
 /**
  * Renders an ADF node (usually a doc) to DOM nodes. `opts.jiraUrl` (the issue in Jira) is where
- * attachment chips link to.
+ * unmatched attachment chips link to; `opts.attachments` (the issue's fields.attachment) lets
+ * media nodes show the attachment itself.
  */
 export function renderAdf(node, opts = {}) {
   if (!node) return document.createTextNode("");
@@ -129,38 +155,51 @@ export function renderAdf(node, opts = {}) {
     case "date": return document.createTextNode(new Date(Number(a.timestamp)).toLocaleDateString());
     case "inlineCard": case "blockCard": case "embedCard":
       return safeUrl(a.url) ? el("a", { href: a.url, target: "_blank", rel: "noopener" }, a.url) : document.createTextNode("");
-    case "mediaSingle": case "mediaGroup": return el("div", { class: "atts" }, kids());
-    case "media": case "mediaInline": return mediaChip(a, opts);
+    case "mediaSingle": return el("div", { class: "atts single" }, kids());
+    case "mediaGroup": return el("div", { class: "atts" }, kids());
+    case "media": case "mediaInline": return media(a, opts);
     case "table": return el("div", { class: "tablewrap" }, el("table", {}, el("tbody", {}, kids())));
   }
   if (BLOCKS[node.type]) return el(BLOCKS[node.type], {}, kids());
   return el("span", {}, kids());  // unknown node: keep its text
 }
 
-/** Plain text -> ADF doc: blank lines split paragraphs, single newlines become hard breaks. */
-export function textToAdf(text) {
+/**
+ * Plain text -> ADF doc: blank lines split paragraphs, single newlines become hard breaks.
+ * `mentions` ("@Name" -> accountId, a Map or object) turns those names into mention nodes;
+ * any other "@" stays text.
+ */
+export function textToAdf(text, mentions) {
   return {
     type: "doc", version: 1,
     content: text.trim().split(/\n\s*\n/).map((para) => {
       const content = [];
       para.split("\n").forEach((line, i) => {
         if (i) content.push({ type: "hardBreak" });
-        if (line) content.push({ type: "text", text: line });
+        if (!line) return;
+        for (const part of mentions ? splitMentions(line, mentions) : [line]) {
+          content.push(typeof part === "string" ? { type: "text", text: part }
+            : { type: "mention", attrs: { id: part.id, text: part.text } });
+        }
       });
       return { type: "paragraph", content };
     }),
   };
 }
 
+/** A mention node that round-trips through "@Name" text (see mentions.mentionsOf). */
+const plainMention = (n) => n.type === "mention" && !!(n.attrs && n.attrs.id && /^@\S/.test(n.attrs.text || ""));
+
 /** True if editing this doc as plain text loses nothing (no formatting, lists, code, media...). */
 export function plainSafe(doc) {
   const ok = (n) => ["doc", "paragraph", "hardBreak"].includes(n.type) ? (n.content || []).every(ok)
-    : n.type === "text" && !(n.marks || []).length;
+    : (n.type === "text" && !(n.marks || []).length) || plainMention(n);
   return !doc || ok(doc);
 }
 
-/** Inverse of textToAdf for plainSafe docs. */
+/** Inverse of textToAdf for plainSafe docs (mentions become their "@Name" text). */
 export function adfToText(doc) {
   if (!doc) return "";
-  return (doc.content || []).map((p) => (p.content || []).map((n) => n.type === "hardBreak" ? "\n" : n.text || "").join("")).join("\n\n");
+  const inline = (n) => n.type === "hardBreak" ? "\n" : n.type === "mention" ? (n.attrs || {}).text || "" : n.text || "";
+  return (doc.content || []).map((p) => (p.content || []).map(inline).join("")).join("\n\n");
 }

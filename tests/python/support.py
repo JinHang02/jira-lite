@@ -21,6 +21,8 @@ from jira_lite.config import Settings
 
 SLOW_SECONDS = 2.0  # how long the fake's /slow endpoint stalls
 PROXY_TIMEOUT = 0.5  # proxy timeout used by the app under test
+MEDIA_PATH = "/media/file/"  # where the fake redirects attachment downloads
+PNG_BYTES = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
 
 
 class _FakeJiraHandler(BaseHTTPRequestHandler):
@@ -47,6 +49,12 @@ class _FakeJiraHandler(BaseHTTPRequestHandler):
             return self._reply(200, b"plain", "text/plain;charset=UTF-8")
         if path.endswith("/bad-request"):
             return self._reply(400, b'{"errors":{"summary":"required"}}')
+        if "/attachment/content/" in path:  # Jira Cloud: 303 to a short-lived media URL
+            return self._redirect(MEDIA_PATH + path.rsplit("/", 1)[1] + "?token=short-lived")
+        if "/attachment/thumbnail/" in path:  # some answers carry the bytes directly
+            return self._reply(200, PNG_BYTES, "image/png", (("Content-Disposition", 'inline; filename="a.png"'),))
+        if path.startswith(MEDIA_PATH):  # must never be reached through the proxy
+            return self._reply(200, b"media bytes", "application/octet-stream")
         if self.command == "DELETE":
             return self._reply_empty(204)
         payload = {"method": self.command, "path": self.path}
@@ -58,10 +66,19 @@ class _FakeJiraHandler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.end_headers()
 
-    def _reply(self, code: int, data: bytes, ctype: str = "application/json") -> None:
+    def _redirect(self, path: str) -> None:
+        self.send_response(303)
+        self.send_header("Location", self.server.url + path)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def _reply(self, code: int, data: bytes, ctype: str = "application/json",
+               headers: Tuple[Tuple[str, str], ...] = ()) -> None:
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
+        for name, value in headers:
+            self.send_header(name, value)
         self.end_headers()
         try:
             self.wfile.write(data)

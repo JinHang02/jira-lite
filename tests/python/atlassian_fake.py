@@ -89,6 +89,12 @@ class _Handler(BaseHTTPRequestHandler):
         prefix = "/ex/jira/%s/rest/api/3/" % CLOUD_ID
         if not path.startswith(prefix):
             return self._json(404, {"errorMessages": ["no such site"]})
+        if path.startswith(prefix + "attachment/content/"):
+            self.send_response(303)
+            self.send_header("Location", "https://api.media.example/file/1/binary?token=short-lived")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         if path == prefix + "myself":
             return self._json(200, {"accountId": ACCOUNT_ID, "displayName": DISPLAY_NAME})
         if self.command == "DELETE":

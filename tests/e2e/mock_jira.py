@@ -17,6 +17,9 @@ Covered (what jira-lite calls, plus a few neighbours):
   PUT  issue/{key}/assignee
   GET|POST issue/{key}/transitions   -- workflow graph enforced
   GET|POST issue/{key}/comment, GET|PUT|DELETE issue/{key}/comment/{id}
+  POST issue/{key}/attachments  -- multipart/form-data, needs X-Atlassian-Token: no-check
+  GET  attachment/content|thumbnail/{id} -- 303 to /__mock/media/{id}?token=.. (like Media Services)
+  GET  user/search?query=
   GET  /browse/{key}          -- a tiny HTML page, so "Open in Jira" links go somewhere
 
 Anything else answers 404 with an ``errorMessages`` entry naming the route, and JQL the
@@ -42,10 +45,14 @@ import html
 import json
 import os
 import re
+import struct
 import sys
 import threading
 import time
+import zlib
 from datetime import datetime, timedelta, timezone
+from email import policy as email_policy
+from email.parser import BytesParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs, unquote, urlsplit
@@ -397,6 +404,44 @@ def changelog_day(day: Optional[str]) -> Optional[str]:
     return day + " 00:00:00.0" if day else None
 
 
+def _png(width: int, height: int, seed: str) -> bytes:
+    """A small valid PNG (diagonal two-colour gradient derived from ``seed``)."""
+    h = hashlib.sha256(seed.encode()).digest()
+    a, b = h[:3], h[3:6]
+    rows = []
+    for y in range(height):
+        row = bytearray([0])
+        for x in range(width):
+            t = (x + y) / float(width + height)
+            row += bytes(int(a[i] * (1 - t) + b[i] * t) for i in range(3))
+        rows.append(bytes(row))
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(b"".join(rows))) + chunk(b"IEND", b""))
+
+
+def placeholder_file(mime: str, filename: str) -> bytes:
+    """Bytes for a seeded attachment (the seed only has metadata)."""
+    if mime == "image/png":
+        return _png(240, 150, filename)
+    return ("mock file %s (%s)\n" % (filename, mime)).encode()
+
+
+def parse_multipart(ctype: str, raw: bytes) -> List[Tuple[str, str, str, bytes]]:
+    """multipart/form-data -> [(field name, filename, content type, bytes)]."""
+    msg = BytesParser(policy=email_policy.HTTP).parsebytes(b"Content-Type: " + ctype.encode() + b"\r\n\r\n" + raw)
+    out = []  # type: List[Tuple[str, str, str, bytes]]
+    if not msg.is_multipart():
+        return out
+    for part in msg.iter_parts():
+        name = part.get_param("name", header="content-disposition") or ""
+        filename = part.get_filename() or ""
+        out.append((str(name), str(filename), part.get_content_type(), part.get_payload(decode=True) or b""))
+    return out
+
+
 class ApiError(Exception):
     """An error answer in Jira's shape: {"errorMessages": [...], "errors": {...}}."""
 
@@ -568,6 +613,7 @@ class MockJira:
             self.next_issue = 1
             self.next_comment = 10000
             self.next_history = 20000
+            self.next_attachment = 10600
             self._seed()
 
     def _seed(self) -> None:
@@ -1586,6 +1632,71 @@ class MockJira:
                          % (html.escape(issue["key"]), html.escape(issue["key"]), html.escape(issue["summary"]),
                             html.escape(STATUS_BY_ID[issue["status"]][1])))
 
+    # ---- attachments (binary / multipart, outside the JSON dispatch) ---------------------------
+
+    def _attachment(self, att_id: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        for issue in self.issues.values():
+            for a in issue["attachments"]:
+                if a["id"] == att_id:
+                    return issue, a
+        raise ApiError(404, ["The attachment with id '%s' does not exist" % att_id])
+
+    def media_token(self, att_id: str) -> str:
+        """Stands in for the short-lived token Atlassian puts in media URLs."""
+        return hashlib.sha256(("media:%s:%s" % (att_id, self.epoch.isoformat())).encode()).hexdigest()[:24]
+
+    def attachment_redirect(self, att_id: str, kind: str) -> str:
+        """Jira Cloud answers attachment/content|thumbnail/{id} with a 303 to Media Services."""
+        with self.lock:
+            self._attachment(att_id)
+            return "%s/__mock/media/%s?token=%s%s" % (self.base, att_id, self.media_token(att_id),
+                                                      "&mode=thumbnail" if kind == "thumbnail" else "")
+
+    def media(self, att_id: str, token: str) -> Tuple[int, bytes, str, str]:
+        """The file behind a media URL: (status, bytes, content type, filename). No auth header
+        needed (like api.media.atlassian.com), but the token must match."""
+        with self.lock:
+            try:
+                _, a = self._attachment(att_id)
+            except ApiError:
+                return 404, b"no such file", "text/plain", ""
+            if token != self.media_token(att_id):
+                return 403, b"bad or expired media token", "text/plain", ""
+            data = a.get("data")
+            if data is None:
+                data = placeholder_file(a["mimeType"], a["filename"])
+            return 200, data, a["mimeType"], a["filename"]
+
+    def upload_attachments(self, ref: str, ctype: str, raw: bytes, xsrf: Optional[str]) -> Tuple[int, Any]:
+        """POST issue/{key}/attachments: multipart/form-data with one or more "file" parts."""
+        if (xsrf or "").lower() != "no-check":
+            raise ApiError(403, ["XSRF check failed"])
+        if not ctype.lower().startswith("multipart/form-data") or "boundary=" not in ctype:
+            raise ApiError(415, ["Unsupported Media Type: expected multipart/form-data"])
+        parts = parse_multipart(ctype, raw)
+        files = [p for p in parts if p[0] == "file" and p[1]]
+        if not files:
+            raise ApiError(400, ["No file was found in the request (the form field must be named 'file')."])
+        with self.lock:
+            issue = self.find_issue(ref)
+            out = []
+            now = self.now()
+            for _, filename, mime, data in files:
+                att = {"id": str(self.next_attachment), "filename": filename, "mimeType": mime or "application/octet-stream",
+                       "size": len(data), "author": ME_ID, "created": now, "mediaId": "", "data": data}
+                self.next_attachment += 1
+                issue["attachments"].append(att)
+                self._history(issue, ME_ID, now, [self._item("Attachment", None, None, att["id"], filename)])
+                out.append(self.attachment_json(att))
+            issue["updated"] = now
+            return 200, out
+
+    def search_users(self, q: Dict[str, str]) -> Tuple[int, Any]:
+        """GET user/search?query= (and user/picker-style lookups): any user, by name or e-mail."""
+        needle = (q.get("query") or "").lower()
+        users = [self.user_json(u[0]) for u in USERS if not needle or needle in u[1].lower() or needle in u[3]]
+        return 200, users[:int(q.get("maxResults") or 50)]
+
 
 # ---------------------------------------------------------------------------------------------
 # HTTP layer
@@ -1606,6 +1717,8 @@ class Handler(BaseHTTPRequestHandler):
         m = GATEWAY_RE.match(path)
         if m:
             path = m.group(1)
+        if self._files(path, parts.query, raw):
+            return
         if path.startswith("/__mock/"):
             return self._control(path, parts.query)
         if path.startswith("/browse/") and self.command == "GET":
@@ -1635,6 +1748,66 @@ class Handler(BaseHTTPRequestHandler):
         self._send(status, json.dumps(payload).encode(), "application/json;charset=UTF-8")
 
     do_GET = do_POST = do_PUT = do_DELETE = _handle
+
+    ATTACH_UPLOAD = re.compile(r"^" + API + r"issue/([^/]+)/attachments$")
+    ATTACH_FILE = re.compile(r"^" + API + r"attachment/(content|thumbnail)/([^/]+)$")
+    MEDIA = re.compile(r"^/__mock/media/([^/]+)$")
+
+    def _files(self, path: str, query: str, raw: bytes) -> bool:
+        """Binary and multipart routes the JSON dispatch can't express. True if handled.
+
+        POST issue/{key}/attachments (multipart, needs X-Atlassian-Token: no-check),
+        GET attachment/content|thumbnail/{id} (303 to a media URL, like Jira Cloud),
+        GET /__mock/media/{id}?token= (the bytes; no Authorization, token-checked),
+        GET user/search?query=."""
+        up = self.ATTACH_UPLOAD.match(path) if self.command == "POST" else None
+        dl = self.ATTACH_FILE.match(path) if self.command == "GET" else None
+        media = self.MEDIA.match(path) if self.command == "GET" else None
+        users = path == API + "user/search" and self.command == "GET"
+        if not (up or dl or media or users):
+            return False
+        jira = self.server.jira
+        if media:
+            q = parse_qs(query)
+            status, data, ctype, name = jira.media(unquote(media.group(1)), (q.get("token") or [""])[-1])
+            self.server.record(self.command, self.path, None, status, self.headers.get("Authorization"))
+            self.send_response(status)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(data)))
+            if name:
+                self.send_header("Content-Disposition", 'inline; filename="%s"' % name.replace('"', ""))
+            self.end_headers()
+            self.wfile.write(data)
+            return True
+        body = None  # type: Any
+        try:
+            if not self.headers.get("Authorization"):
+                raise ApiError(401, ["You are not authenticated. Authentication required to perform this operation."])
+            if up:
+                ctype = self.headers.get("Content-Type") or ""
+                status, payload = jira.upload_attachments(unquote(up.group(1)), ctype, raw,
+                                                          self.headers.get("X-Atlassian-Token"))
+                body = {"multipart": [{"name": n, "filename": f, "contentType": t, "size": len(d)}
+                                      for n, f, t, d in parse_multipart(ctype, raw)],
+                        "xAtlassianToken": self.headers.get("X-Atlassian-Token")}
+            elif dl:
+                location = jira.attachment_redirect(unquote(dl.group(2)), dl.group(1))
+                self.server.record(self.command, self.path, None, 303, self.headers.get("Authorization"))
+                self.send_response(303)
+                self.send_header("Location", location)
+                self.send_header("Content-Type", "text/html;charset=UTF-8")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return True
+            else:
+                status, payload = jira.search_users({k: v[-1] for k, v in parse_qs(query).items()})
+        except ApiError as e:
+            status, payload = e.status, e.payload
+        except Exception as e:  # a mock bug: make it loud
+            status, payload = 500, {"errorMessages": ["mock_jira internal error: %r" % e], "errors": {}}
+        self.server.record(self.command, self.path, body, status, self.headers.get("Authorization"))
+        self._send(status, json.dumps(payload).encode(), "application/json;charset=UTF-8")
+        return True
 
     def _control(self, path: str, query: str) -> None:
         if path == "/__mock/requests" and self.command == "GET":
