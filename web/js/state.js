@@ -1,4 +1,5 @@
 // Application state, shared by reference between modules, plus localStorage-backed preferences.
+import { GROUPINGS, ORDERINGS } from "./issues.js";
 
 export const state = {
   /** Server config from /config. */
@@ -18,15 +19,24 @@ export const state = {
   current: null,            // key of the issue open in the detail panel
   cursor: null,             // key of the row/card highlighted by keyboard or mouse
   busy: false,              // a write is in flight; skip auto-refresh
+  loaded: false,            // the current list has loaded at least once (until then: a skeleton)
+  loadError: "",            // why the last full load failed while nothing was loaded
   lastSync: 0,              // start time of the last successful list sync (full or delta)
   lastFull: 0,              // start time of the last successful full reload
   signedOut: false,         // the sign-in screen is up; no more requests or auto-refresh
 
   // ---- preferences (persisted) ----
   who: "mine",              // "mine" | "all" | accountId
-  showDone: false,
-  collapsed: new Set(),     // collapsed status-group names
+  showDone: false,          // Display › Show completed
+  collapsed: new Set(),     // collapsed list groups (status name, or "assignee:…" / "priority:…")
   view: "list",             // "list" | "board"
+  grouping: "status",       // Display › Grouping (list only), one of GROUPINGS
+  ordering: "updated",      // Display › Ordering (within groups and board columns), one of ORDERINGS
+  showSubProgress: true,    // Display › Show sub-issue progress
+  boardEmpty: false,        // show the board's empty columns
+  sideHidden: false,        // sidebar collapsed (wide screens)
+  peopleOpen: true,         // sidebar People section expanded
+  recentPeople: [],         // accountIds picked in the sidebar, most recent first
   filter: "",               // free-text filter (not persisted)
 };
 
@@ -61,12 +71,28 @@ export function unstash(k) {
   } catch (e) { return null; }
 }
 
+/** Parses a stored JSON array, or returns []. */
+function recallList(k) {
+  try {
+    const v = JSON.parse(recall(k) || "[]");
+    return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
+  } catch (e) { return []; }
+}
+
 /** Restores persisted preferences into `state`. */
 export function loadPrefs() {
+  const oneOf = (v, allowed) => (allowed.includes(v) ? v : allowed[0]);
   state.who = recall("who") || "mine";
   state.showDone = recall("showDone") === "1";
   state.view = recall("view") === "board" ? "board" : "list";
-  try { state.collapsed = new Set(JSON.parse(recall("collapsed") || "[]")); } catch (e) { /* keep default */ }
+  state.collapsed = new Set(recallList("collapsed"));
+  state.grouping = oneOf(recall("grouping"), GROUPINGS);
+  state.ordering = oneOf(recall("ordering"), ORDERINGS);
+  state.showSubProgress = recall("subProgress") !== "0";
+  state.boardEmpty = recall("boardEmpty") === "1";
+  state.sideHidden = recall("sideHidden") === "1";
+  state.peopleOpen = recall("peopleOpen") !== "0";
+  state.recentPeople = recallList("recentPeople");
 }
 
 /** The issue with this key from the list or from issues opened elsewhere. */

@@ -1,10 +1,20 @@
-// Popover menu anchored to a button (status / priority / assignee pickers). One open at a time.
+// Popover menu anchored to a button (status / priority / assignee pickers), and free-form popovers
+// (the Display options). One open at a time.
 import { el, icon, ICONS } from "./dom.js";
 
-let menu = null;  // {box, search, buttons, idx}
+let menu = null;  // {box, search, buttons, idx, popover?, anchor?}
 
-/** The open menu, or null. */
+/** The open menu or popover, or null. */
 export const activeMenu = () => menu;
+
+/** Positions `box` under `anchor` (above it if there's no room); align "end" lines up right edges. */
+function place(box, anchor, align) {
+  const r = anchor.getBoundingClientRect();
+  const w = box.offsetWidth, h = box.offsetHeight;
+  const left = align === "end" ? r.right - w : r.left;
+  box.style.left = Math.max(8, Math.min(left, innerWidth - w - 8)) + "px";
+  box.style.top = (r.bottom + 4 + h > innerHeight - 8 ? Math.max(8, r.top - h - 4) : r.bottom + 4) + "px";
+}
 
 /**
  * Opens a menu under `anchor`.
@@ -37,11 +47,24 @@ export function openMenu(anchor, title, items, onPick, opts = {}) {
   if (search) search.addEventListener("input", fill);
   fill();
   document.body.append(box);
-  const r = anchor.getBoundingClientRect();
-  const w = box.offsetWidth, h = box.offsetHeight;
-  box.style.left = Math.max(8, Math.min(r.left, innerWidth - w - 8)) + "px";
-  box.style.top = (r.bottom + 4 + h > innerHeight - 8 ? Math.max(8, r.top - h - 4) : r.bottom + 4) + "px";
+  place(box, anchor);
   if (search) search.focus();
+}
+
+/**
+ * Opens a free-form popover (its own controls, no item list) under `anchor`, which gets
+ * aria-expanded. Only Escape is handled for it (see menuKey); global shortcuts are suppressed
+ * while it is open. Returns the popover element.
+ * @param opts {label?: string, cls?: string, align?: "start" | "end"}
+ */
+export function openPopover(anchor, content, opts = {}) {
+  closeMenu();
+  const box = el("div", { class: "menu pop " + (opts.cls || ""), role: "dialog", "aria-label": opts.label || null }, content);
+  menu = { box, search: null, buttons: [], idx: 0, popover: true, anchor };
+  anchor.setAttribute("aria-expanded", "true");
+  document.body.append(box);
+  place(box, anchor, opts.align);
+  return box;
 }
 
 /** Highlights item n (wrapping around). */
@@ -53,13 +76,26 @@ export function hilite(n) {
 }
 
 export function closeMenu() {
-  if (menu) { menu.box.remove(); menu = null; }
+  if (!menu) return;
+  if (menu.anchor) menu.anchor.setAttribute("aria-expanded", "false");
+  menu.box.remove();
+  menu = null;
 }
 
-/** Keyboard handling while a menu is open. Returns true if the key was consumed. */
+/**
+ * Keyboard handling while a menu is open. Returns true if the key was consumed. For a popover
+ * only Escape is consumed (it closes and refocuses the anchor); other keys reach its controls.
+ */
 export function menuKey(e) {
   if (!menu) return false;
   const k = e.key;
+  if (menu.popover) {
+    if (k !== "Escape") return false;
+    const a = menu.anchor;
+    closeMenu();
+    if (a) a.focus();
+    return true;
+  }
   const typing = menu.search && e.target === menu.search;
   if (k === "ArrowDown" || (!typing && k === "j")) hilite(menu.idx + 1);
   else if (k === "ArrowUp" || (!typing && k === "k")) hilite(menu.idx - 1);
@@ -70,7 +106,11 @@ export function menuKey(e) {
   return true;
 }
 
-/** Closes the menu on a click outside it. */
+/** Closes the menu on a click outside it (a click on a popover's own anchor toggles it instead). */
 export function installMenuDismiss() {
-  document.addEventListener("mousedown", (e) => { if (menu && !menu.box.contains(e.target)) closeMenu(); });
+  document.addEventListener("mousedown", (e) => {
+    if (!menu || menu.box.contains(e.target)) return;
+    if (menu.anchor && menu.anchor.contains(e.target)) return;  // the anchor's click handler toggles
+    closeMenu();
+  });
 }

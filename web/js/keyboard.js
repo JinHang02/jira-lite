@@ -1,9 +1,11 @@
-// Global keyboard shortcuts (Linear-style). See the hints in the sidebar.
+// Global keyboard shortcuts (Linear-style). The list shown to users is shortcuts.js (press ?).
 import { state } from "./state.js";
 import { $, rowFor, typingIn } from "./dom.js";
-import { menuKey, installMenuDismiss } from "./menu.js";
+import { menuKey, installMenuDismiss, activeMenu } from "./menu.js";
 import { activeModal, closeModal } from "./modal.js";
 import { openPalette, paletteOpen } from "./palette.js";
+import { toggleHelp, helpOpen } from "./help.js";
+import { toggleSidebar, closeDrawer } from "./sidebar.js";
 import { setCursor, move } from "./cursor.js";
 import { statusMenu, priorityMenu, assigneeMenu } from "./edits.js";
 import { clearFilter } from "./views.js";
@@ -15,8 +17,9 @@ function onKey(e) {
   if (mod && k.toLowerCase() === "k") { e.preventDefault(); if (paletteOpen()) closeModal(); else openPalette(); return; }
   if (mod && k.toLowerCase() === "b" && !activeModal()) { e.preventDefault(); actions.setView(state.view === "board" ? "list" : "board"); return; }
   if (menuKey(e)) { e.preventDefault(); return; }
+  if (activeMenu()) return;  // a popover (Display) is open: its controls get the keys
   if (activeModal()) {
-    if (k === "Escape") { e.preventDefault(); closeModal(); }
+    if (k === "Escape" || (k === "?" && helpOpen())) { e.preventDefault(); closeModal(); }
     return;
   }
   if (typingIn(e.target)) {
@@ -36,13 +39,20 @@ function onKey(e) {
   switch (k) {
     case "j": case "ArrowDown": move(1); break;
     case "k": case "ArrowUp": move(-1); break;
-    case "Enter": case "o": if (state.cursor) actions.openIssue(state.cursor); break;
+    case "Enter": case "o":
+      // Enter on a focused button (header, sidebar, group header) activates it instead.
+      if (k === "Enter" && e.target instanceof Element && e.target.closest("button, a, [role=button]")) return;
+      if (state.cursor) actions.openIssue(state.cursor);
+      break;
     case "Escape":
+      if (closeDrawer()) break;
       if (state.current) actions.closeDetail();
       else if (state.filter) clearFilter();
       break;
     case "c": actions.openCreate(null); break;
     case "/": $("#q").focus(); $("#q").select(); break;
+    case "?": toggleHelp(); break;
+    case "[": toggleSidebar(); break;
     case "s": if (target && anchor("#schip", ".ibtn:nth-of-type(2)")) statusMenu(target, anchor("#schip", ".ibtn:nth-of-type(2)")); break;
     case "p": if (target && anchor("#pchip", ".ibtn")) priorityMenu(target, anchor("#pchip", ".ibtn")); break;
     case "a": if (target && anchor("#achip", ".rright .ibtn")) assigneeMenu(target, anchor("#achip", ".rright .ibtn")); break;

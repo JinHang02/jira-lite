@@ -4,7 +4,7 @@ import * as jira from "./api.js";
 import { state, loadPrefs, unstash } from "./state.js";
 import { $, toast } from "./dom.js";
 import { wire } from "./actions.js";
-import { renderSide, whoLabel, setWho } from "./sidebar.js";
+import { renderSide, whoLabel, setWho, bindSidebar } from "./sidebar.js";
 import { loadList, syncList, renderMain, setView, toggleDone, refresh, autoRefresh, bindHeader } from "./views.js";
 import { loadStatuses } from "./board.js";
 import { openIssue, closeDetail, loadDetail } from "./detail.js";
@@ -12,8 +12,7 @@ import { openCreate } from "./create.js";
 import { loadPriorities } from "./meta.js";
 import { installKeyboard } from "./keyboard.js";
 import { oauthMode, showSignIn, requireLogin } from "./auth.js";
-
-const REFRESH_MS = 60000;
+import { REFRESH_MS } from "./sync.js";
 
 async function loadPeople() {
   try {
@@ -35,6 +34,7 @@ function loadMe() {
 function startApp() {
   loadPrefs();
   bindHeader();
+  bindSidebar();
   installKeyboard();
   // Every minute, a delta sync (see views.syncList); a full reload every 10 minutes or on r.
   setInterval(() => { if (!document.hidden) autoRefresh(); }, REFRESH_MS);
