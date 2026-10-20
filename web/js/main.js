@@ -4,7 +4,7 @@ import * as jira from "./api.js";
 import { state, loadPrefs, unstash } from "./state.js";
 import { $, toast } from "./dom.js";
 import { wire } from "./actions.js";
-import { renderSide, whoLabel, setWho, bindSidebar } from "./sidebar.js";
+import { renderSide, updateTitle, setWho, setEpic, applySavedView, saveView, loadEpics, bindSidebar } from "./sidebar.js";
 import { loadList, syncList, renderMain, setView, toggleDone, refresh, autoRefresh, bindHeader } from "./views.js";
 import { loadStatuses } from "./board.js";
 import { openIssue, closeDetail, loadDetail } from "./detail.js";
@@ -19,7 +19,7 @@ async function loadPeople() {
     const users = await jira.getAssignable(state.cfg.project);
     state.people = users.filter((u) => u.accountType === "atlassian").sort((a, b) => a.displayName.localeCompare(b.displayName));
     renderSide();
-    $("#title").textContent = whoLabel();
+    updateTitle();
   } catch (e) {
     toast("Couldn't load people: " + e.message, true);
   }
@@ -42,9 +42,11 @@ function startApp() {
     if (!document.hidden && Date.now() - state.lastSync > REFRESH_MS) autoRefresh();
   });
   renderSide();
+  $("#q").value = state.filter;  // a saved view's filter, when one is active
   setView(state.view);
-  $("#title").textContent = whoLabel();
+  updateTitle();
   loadList();
+  loadEpics();
   // Statuses only shape the board's columns; re-render once they arrive if the board is showing.
   loadStatuses().then(() => { if (state.view === "board") renderMain(); });
   loadPeople();
@@ -57,7 +59,10 @@ function startApp() {
 }
 
 async function init() {
-  wire({ openIssue, closeDetail, loadDetail, loadList, renderMain, openCreate, setWho, setView, toggleDone, refresh, sync: syncList });
+  wire({
+    openIssue, closeDetail, loadDetail, loadList, renderMain, openCreate, setWho, setView, toggleDone, refresh, sync: syncList,
+    setEpic, applySavedView, saveView, loadEpics,
+  });
   jira.setLoginHandler(requireLogin);
   try { state.cfg = { ...state.cfg, ...(await jira.getConfig()) }; } catch (e) { /* keep defaults */ }
   if (state.cfg.auth !== "oauth") state.cfg.auth = "token";

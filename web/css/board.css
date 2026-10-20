@@ -22,3 +22,9 @@
 .lane-chip { height: var(--ctrl-h); padding: 0 10px; border: 1px dashed var(--border); border-radius: 8px; color: var(--muted); font-weight: 500; white-space: nowrap;
   transition: background var(--fast) var(--ease), color var(--fast) var(--ease), border-color var(--fast) var(--ease); }
 .lane-chip:hover { background: var(--bg-hover); color: var(--text); border-style: solid; }
+
+/* Multi-select: the checkbox covers the priority icon on hover / while selecting. */
+.tcard { position: relative; }
+.tcard .selbox { left: auto; right: 10px; top: 9px; margin-top: 0; }
+.tcard:hover .top .picon, .selecting .tcard .top .picon { visibility: hidden; }
+.tcard.sel { border-color: color-mix(in srgb, var(--accent) 70%, var(--border)); background: color-mix(in srgb, var(--accent) 7%, var(--elevated)); }

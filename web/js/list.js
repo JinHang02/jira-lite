@@ -9,6 +9,7 @@ import { statusIcon, prioIcon, avatar, subBadge } from "./icons.js";
 import { labelPills, dueChip } from "./chips.js";
 import { statusMenu, priorityMenu, assigneeMenu } from "./edits.js";
 import { setCursor } from "./cursor.js";
+import { selBox, clickSelect, bindSelect } from "./selection.js";
 import { actions } from "./actions.js";
 
 /** Renders `list` (already filtered and ordered) into #list. */
@@ -44,9 +45,9 @@ function row(i) {
     b.addEventListener("click", (e) => { e.stopPropagation(); onPick(b); });
     return b;
   };
-  return el("div", {
-    class: "row" + (i.key === state.current ? " open" : "") + (i.key === state.cursor ? " cur" : ""),
-    "data-key": i.key, onclick: () => actions.openIssue(i.key), onmouseenter: () => setCursor(i.key),
+  const r = el("div", {
+    class: "row" + (i.key === state.current ? " open" : "") + (i.key === state.cursor ? " cur" : "") + (state.selected.has(i.key) ? " sel" : ""),
+    "data-key": i.key, onclick: (e) => { if (!clickSelect(e, i.key)) actions.openIssue(i.key); }, onmouseenter: () => setCursor(i.key),
   },
     btn((f.priority ? "Priority: " + f.priority.name : "No priority") + " (P)", prioIcon(f.priority), (b) => priorityMenu(i.key, b)),
     el("span", { class: "rid" }, i.key),
@@ -57,7 +58,10 @@ function row(i) {
       labelPills(f.labels),
       dueChip(i),
       btn((f.assignee ? "Assignee: " + f.assignee.displayName : "Unassigned") + " (A)", avatar(f.assignee), (b) => assigneeMenu(i.key, b)),
-      el("span", { class: "rdate", title: "Updated " + new Date(f.updated).toLocaleString() }, shortDate(f.updated))));
+      el("span", { class: "rdate", title: "Updated " + new Date(f.updated).toLocaleString() }, shortDate(f.updated))),
+    selBox(i.key));  // last, so the :first-child / :nth-of-type selectors on the buttons still hold
+  bindSelect(r, i.key);
+  return r;
 }
 
 function toggleGroup(key) {

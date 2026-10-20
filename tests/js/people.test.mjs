@@ -37,9 +37,9 @@ test("pushRecent: most recent first, deduplicated, capped", () => {
   assert.deepEqual(pushRecent(undefined, "a"), ["a"]);
 });
 
-test("shortcut groups: the four sections, non-empty, modifier by platform", () => {
+test("shortcut groups: the five sections, non-empty, modifier by platform", () => {
   const g = shortcutGroups(true);
-  assert.deepEqual(g.map((x) => x.title), ["General", "Navigation", "Issue", "Views"]);
+  assert.deepEqual(g.map((x) => x.title), ["General", "Navigation", "Issue", "Selection", "Views"]);
   for (const s of g) for (const it of s.items) assert.ok(it.label && it.keys.length && it.keys.every((c) => c.length));
   const caps = (groups) => groups.flatMap((s) => s.items.flatMap((it) => it.keys.flat()));
   assert.ok(caps(g).includes("⌘") && !caps(g).includes("Ctrl"));

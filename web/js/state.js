@@ -1,5 +1,6 @@
 // Application state, shared by reference between modules, plus localStorage-backed preferences.
 import { GROUPINGS, ORDERINGS } from "./issues.js";
+import { parseViews } from "./savedviews.js";
 
 export const state = {
   /** Server config from /config. */
@@ -24,6 +25,12 @@ export const state = {
   lastSync: 0,              // start time of the last successful list sync (full or delta)
   lastFull: 0,              // start time of the last successful full reload
   signedOut: false,         // the sign-in screen is up; no more requests or auto-refresh
+  selected: new Set(),      // keys multi-selected for bulk edits (x, shift+click, ⌘A)
+  selAnchor: null,          // where a shift-range starts
+  selBase: new Set(),       // the selection a shift-range extends
+  epics: [],                // sidebar epics: [{key, summary, status, done, total}]
+  epicsState: "",           // "" (not loaded) | "loading" | "ok" | "error"
+  epicInfo: new Map(),      // epic key -> {key, summary}, also for epics not in the sidebar
 
   // ---- preferences (persisted) ----
   who: "mine",              // "mine" | "all" | accountId
@@ -37,6 +44,11 @@ export const state = {
   sideHidden: false,        // sidebar collapsed (wide screens)
   peopleOpen: true,         // sidebar People section expanded
   recentPeople: [],         // accountIds picked in the sidebar, most recent first
+  epic: null,               // an epic's key: the main view shows its children (overrides who)
+  epicsOpen: true,          // sidebar Epics section expanded
+  viewsOpen: true,          // sidebar Views section expanded
+  savedViews: [],           // saved views (see savedviews.js)
+  activeView: null,         // id of the saved view last applied, until another view is picked
   filter: "",               // free-text filter (not persisted)
 };
 
@@ -93,6 +105,13 @@ export function loadPrefs() {
   state.sideHidden = recall("sideHidden") === "1";
   state.peopleOpen = recall("peopleOpen") !== "0";
   state.recentPeople = recallList("recentPeople");
+  state.epic = recall("epic") || null;
+  state.epicsOpen = recall("epicsOpen") !== "0";
+  state.viewsOpen = recall("viewsOpen") !== "0";
+  state.savedViews = parseViews(recall("savedViews"));
+  const active = state.savedViews.find((v) => v.id === recall("activeView"));
+  state.activeView = active ? active.id : null;
+  if (active) state.filter = active.filter;
 }
 
 /** The issue with this key from the list or from issues opened elsewhere. */
