@@ -1,17 +1,53 @@
-@media (max-width: 900px) {
-  #updated, .seg .lbl { display: none; }
-  #q { width: 120px; }
-  #q:focus { width: 160px; }
+/* Rows: labels go first, then the updated date, as the list narrows. */
+@media (max-width: 1180px) {
+  .row .labels { display: none; }
 }
+@media (max-width: 900px) {
+  .seg .lbl, #displayBtn .lbl, #displayBtn .dchev { display: none; }
+  #displayBtn { width: var(--ctrl-h); padding: 0; justify-content: center; }
+  #q { width: 120px; }
+  #q:focus { width: 168px; }
+  .rdate { display: none; }
+}
+
+/* Phone: the sidebar becomes a slide-in drawer, header controls shrink to icons, rows take two lines. */
 @media (max-width: 760px) {
-  body { flex-direction: column; }
-  #side { width: auto; flex: none; flex-direction: row; gap: 4px; padding: 8px; overflow-x: auto; }
-  .ws, .side-h, .hints { display: none; }
-  .nav { width: auto; }
-  #frame { margin: 0 8px 8px; }
-  #top { padding: 0 8px 0 12px; gap: 6px; }
-  .qwrap, #showDone, .rdate, #newBtn kbd { display: none; }
+  #side { position: fixed; z-index: 25; top: 0; bottom: 0; left: 0; width: min(280px, 86vw); margin: 0; padding-top: 12px;
+    background: var(--bg-sidebar); box-shadow: var(--shadow-high); transform: translateX(-100%); visibility: hidden;
+    transition: transform .16s var(--ease), visibility .16s; }
+  body.side-hidden #side { margin-left: 0; }
+  body.side-open #side { transform: none; visibility: visible; }
+  body.side-open #scrim { display: block; position: fixed; inset: 0; z-index: 24; background: var(--overlay); animation: fade .12s var(--ease); }
+  #frame, body.side-hidden #frame { margin: 8px; }
+  #top { padding: 0 8px 0 6px; gap: 6px; }
+  .seg { margin-left: 2px; }
+  #title { flex: none; max-width: 38vw; }  /* the count gives way first */
+  #count { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+  /* Filter: an icon that expands over the header while in use. */
+  #q { width: var(--ctrl-h); padding: 0 0 0 26px; color: transparent; cursor: pointer; }
+  #q::placeholder { color: transparent; }
+  #q:focus { width: var(--ctrl-h); }
+  .qwrap:focus-within { position: absolute; z-index: 3; left: 8px; right: 8px; }
+  .qwrap:focus-within #q { width: 100%; padding-right: 10px; color: inherit; cursor: text; }
+  .qwrap:focus-within #q::placeholder { color: var(--faint); }
+  #newBtn { width: var(--ctrl-h); padding: 0; justify-content: center; }
+  #newBtn .lbl { display: none; }
+
+  .row { display: grid; grid-template-columns: 22px auto 1fr auto; grid-template-areas: "st title title title" "pr id . right";
+    align-items: center; column-gap: 8px; row-gap: 2px; height: auto; min-height: 58px; padding: 8px 12px; }
+  .row > .ibtn:first-child { grid-area: pr; }
+  .row > .ibtn:nth-of-type(2) { grid-area: st; }
+  .row > .rid { grid-area: id; width: auto; font-size: 12px; }
+  .row > .rtitle { grid-area: title; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 19px; }
+  .row > .rright { grid-area: right; gap: 6px; max-width: none; }
+  .gh { padding: 0 12px 0 8px; }
+
+  #board { padding: 8px; }
+  .col { width: min(264px, 80vw); }
+
   #detail { position: fixed; inset: 0; z-index: 5; width: auto; min-width: 0; max-width: none; border: 0; }
   .dscroll { padding: 20px 16px 40px; }
   .overlay { padding-top: 16px; }
+  .help-b { grid-template-columns: 1fr; }
 }

@@ -21,33 +21,40 @@
 <script type="module" src="js/main.js"></script>
 </head>
 <body>
-<nav id="side"></nav>
+<nav id="side" aria-label="Sidebar"></nav>
+<div id="scrim"></div>
 <div id="frame">
   <div id="top">
+    <button class="btn icon ghost" id="sideBtn" title="Toggle sidebar ([)" aria-label="Toggle sidebar" aria-controls="side" aria-expanded="true">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="2.75" width="12" height="10.5" rx="2.25"/><path d="M6.25 3v10"/></svg>
+    </button>
     <span id="title">My issues</span><span id="count"></span>
     <span class="seg" role="group" aria-label="View">
-      <button id="vList" aria-pressed="true" title="List view (⌘B)">
+      <button id="vList" aria-pressed="true" title="List view (⌘B)" aria-label="List view">
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 4h10M3 8h10M3 12h10"/></svg><span class="lbl">List</span></button>
-      <button id="vBoard" aria-pressed="false" title="Board view (⌘B)">
+      <button id="vBoard" aria-pressed="false" title="Board view (⌘B)" aria-label="Board view">
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2.5" width="4" height="11" rx="1.2"/><rect x="10" y="2.5" width="4" height="7" rx="1.2"/></svg><span class="lbl">Board</span></button>
     </span>
     <span class="spacer"></span>
-    <span class="qwrap">
+    <label class="qwrap" title="Filter (/)">
       <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>
-      <input id="q" placeholder="Filter  /" autocomplete="off" spellcheck="false">
-    </span>
-    <span id="updated"></span>
-    <button class="btn" id="showDone" aria-pressed="false" title="Show Done tickets">Show done</button>
-    <button class="btn icon" id="refresh" title="Refresh (r) · auto every 60s">
+      <input id="q" placeholder="Filter" aria-label="Filter issues" autocomplete="off" spellcheck="false">
+    </label>
+    <button class="btn" id="displayBtn" title="Display options" aria-haspopup="dialog" aria-expanded="false">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 4.5h6M12 4.5h1.5M2.5 11.5H4M7.5 11.5h6"/><circle cx="10.25" cy="4.5" r="1.75"/><circle cx="5.75" cy="11.5" r="1.75"/></svg>
+      <span class="lbl">Display</span>
+      <svg class="dchev" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 6.5L8 10l3.5-3.5"/></svg>
+    </button>
+    <button class="btn icon" id="refresh" title="Refresh (R)" aria-label="Refresh">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.5 2.5v3h-3"/></svg>
     </button>
-    <button class="btn primary" id="newBtn" title="New issue (c)">
+    <button class="btn primary" id="newBtn" title="New issue (C)" aria-label="New issue">
       <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 2.5v11M2.5 8h11"/></svg>
-      New issue <kbd>C</kbd>
+      <span class="lbl">New issue</span>
     </button>
   </div>
   <div id="body">
-    <div id="list"><p class="empty">Loading…</p></div>
+    <div id="list"></div>
     <div id="board" hidden></div>
     <aside id="detail" hidden></aside>
   </div>

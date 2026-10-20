@@ -105,3 +105,16 @@ test("mergeDelta: duplicate keys in the delta count once", () => {
   const r = mergeDelta([iss("BA-1")], [iss("BA-5"), iss("BA-5")], keepMine);
   assert.deepEqual(keys(r), ["BA-5", "BA-1"]);
 });
+
+// ---- sinceLabel / REFRESH_MS ----
+test("sinceLabel: relative time since the last sync", async () => {
+  const { sinceLabel, REFRESH_MS } = await import("../../web/js/sync.js");
+  const t = Date.parse("2026-10-20T10:00:00Z");
+  assert.equal(REFRESH_MS, 60000);
+  assert.equal(sinceLabel(0, t), "");
+  assert.equal(sinceLabel(t, t + 30000), "just now");
+  assert.equal(sinceLabel(t, t - 5000), "just now");
+  assert.equal(sinceLabel(t, t + 60000), "1 min ago");
+  assert.equal(sinceLabel(t, t + 12 * 60000 + 59000), "12 min ago");
+  assert.equal(sinceLabel(t, t + 3 * 3600000 + 1), "3 h ago");
+});

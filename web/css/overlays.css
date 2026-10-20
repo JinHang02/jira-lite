@@ -30,3 +30,34 @@
   padding: 8px 14px; max-width: min(560px, calc(100vw - 32px)); transition: opacity .15s var(--ease), transform .15s var(--ease); }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
 #toast.err { color: var(--err); }
+
+/* ---- Display popover ---- */
+.menu.pop { min-width: 0; padding: 6px; }
+.menu.display { width: 272px; }
+.drow { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 32px; padding: 0 6px 0 8px;
+  border-radius: 6px; color: var(--text); text-align: left; transition: background var(--fast) var(--ease); }
+button.drow:hover { background: var(--bg-hover); }
+.drow:focus-visible { outline-offset: -2px; }
+.dsel { height: 26px; min-width: 128px; padding: 0 26px 0 8px; border: 1px solid var(--border); border-radius: 6px; background-color: var(--ctrl);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 16 16'%3E%3Cpath d='M4.5 6.5L8 10l3.5-3.5' fill='none' stroke='%239c9c9e' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 7px center; -webkit-appearance: none; appearance: none;
+  font-size: 12.5px; font-weight: 500; cursor: pointer; transition: border-color var(--fast) var(--ease); }
+.dsel:hover { border-color: var(--faint); }
+.dsel:disabled { opacity: .55; cursor: default; }
+.dsep { height: 1px; margin: 5px -6px; background: var(--border); }
+.switch { position: relative; width: 28px; height: 16px; flex: none; border-radius: 9999px; background: var(--border); transition: background var(--fast) var(--ease); }
+.switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: #fff;
+  box-shadow: 0 1px 2px #0000004d; transition: transform var(--fast) var(--ease); }
+[aria-checked="true"] > .switch { background: var(--accent); }
+[aria-checked="true"] > .switch::after { transform: translateX(12px); }
+
+/* ---- Keyboard shortcuts dialog ---- */
+.modal.help { width: min(620px, 100%); outline: none; }
+.help-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 10px 10px 20px; border-bottom: 1px solid var(--border); }
+.help-h h2 { margin: 0; font-size: 14px; line-height: 20px; font-weight: 600; color: var(--title); }
+.help-b { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 32px; padding: 10px 20px 18px; overflow: auto; }
+.kgroup h3 { margin: 10px 0 4px; font-size: 12px; font-weight: 500; color: var(--faint); }
+.krow { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 30px; color: var(--text); }
+.keys { display: inline-flex; align-items: center; gap: 6px; flex: none; }
+.combo { display: inline-flex; gap: 3px; }
+.keys .or { color: var(--faint); font-size: 11.5px; }

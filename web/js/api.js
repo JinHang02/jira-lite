@@ -1,7 +1,7 @@
 // Talks to the local proxy (server.py): /jira/* -> Jira REST v3.
 
 /** Fields fetched for list rows, board cards, search hits and sub-issues. */
-export const FIELDS = ["summary", "status", "priority", "assignee", "updated", "issuetype", "subtasks", "parent"];
+export const FIELDS = ["summary", "status", "priority", "assignee", "updated", "created", "duedate", "labels", "issuetype", "subtasks", "parent"];
 const DETAIL_FIELDS = ["summary", "status", "description", "assignee", "reporter", "priority", "issuetype", "created", "parent", "subtasks"];
 const enc = encodeURIComponent;
 

@@ -3,14 +3,18 @@
   color-scheme: light dark;  /* native scrollbars and selects follow the theme */
   --font: "Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --row-h: 40px;
+  --ctrl-h: 28px;           /* every header/sidebar control */
+  --side-w: 244px;
   --ease: cubic-bezier(.25, .46, .45, .94);
+  --fast: .12s;             /* hover / toggle transitions */
 
   --bg-sidebar: #eeeeef; --side-hover: #e4e4e5; --side-active: #e0e0e1;
   --bg: #f8f8f9; --bg-hover: #eeeeef; --bg-group: #f1f1f2; --bg-focus: #eaeaeb;
   --bg-selected: #e7e8f3; --elevated: #ffffff; --ctrl: #fefeff; --overlay: #0000003f;
   --border: #dedede; --border-faint: #f1f1f1;
   --title: #1b1b1b; --text: #2f2f31; --muted: #5b5c5e; --faint: #9c9c9e; --link: #3f60d9;
-  --accent: #6d78d5; --accent-hover: #5e69c1; --err: #d93a3e;
+  --accent: #6d78d5; --accent-hover: #5e69c1; --err: #d93a3e; --warn: #b7791f;
+  --skel: #e6e6e8;
   --shadow-low: 0 3px 6px -2px #00000005, 0 1px 1px #0000000a;
   --shadow-med: 0 6px 18px #00000008, 0 3px 9px #0000000f, 0 1px 1px #0000000a;
   --shadow-high: 0 16px 48px #00000024, 0 4px 12px #0000000f;
@@ -29,7 +33,8 @@
     --bg-selected: #1b1e37; --elevated: #19191b; --ctrl: #1b1b1c; --overlay: #00000080;
     --border: #232325; --border-faint: #1a1b1d;
     --title: #ffffff; --text: #e2e3e5; --muted: #949597; --faint: #6b6b6e; --link: #6f7ffe;
-    --accent: #5e69d1; --accent-hover: #6974e1; --err: #f2777a;
+    --accent: #5e69d1; --accent-hover: #6974e1; --err: #f2777a; --warn: #f2c94c;
+    --skel: #1e1f21;
     --shadow-low: 0 .5px 1px 1px #0000004c;
     --shadow-med: 0 3px 8px #0000001f, 0 2px 5px #0000001f, 0 1px 1px #0000001f;
     --shadow-high: 0 16px 48px #00000080, 0 4px 12px #00000040;

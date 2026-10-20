@@ -6,6 +6,9 @@ import { searchJql } from "./jql.js";
 import { matches } from "./issues.js";
 import { statusIcon, avatar, NAV_ICONS } from "./icons.js";
 import { showModal, closeModal, activeModal } from "./modal.js";
+import { toggleHelp, isMac } from "./help.js";
+import { toggleSidebar } from "./sidebar.js";
+import { setDisplay } from "./display.js";
 import { actions } from "./actions.js";
 
 const SEARCH_DELAY_MS = 200;
@@ -19,14 +22,21 @@ export function openPalette() {
   const m = showModal(el("div", { class: "palette", role: "dialog", "aria-label": "Command menu" }, input, list), { kind: "palette" });
   const pal = { items: [], buttons: [], idx: 0, seq: 0, timer: 0 };
 
+  // Items with `more` only show up once something is typed.
   const commands = () => [
     { label: "New issue", hint: "C", icon: icon(14, ICONS.plus, ""), run: () => actions.openCreate(null) },
-    { label: state.view === "board" ? "Switch to list view" : "Switch to board view", hint: "⌘B", run: () => actions.setView(state.view === "board" ? "list" : "board") },
+    { label: state.view === "board" ? "Switch to list view" : "Switch to board view", hint: (isMac() ? "⌘" : "Ctrl ") + "B", run: () => actions.setView(state.view === "board" ? "list" : "board") },
     { label: "My issues", icon: icon(16, NAV_ICONS.mine, ""), run: () => actions.setWho("mine") },
     { label: "All issues", icon: icon(16, NAV_ICONS.all, ""), run: () => actions.setWho("all") },
-    { label: state.showDone ? "Hide done tickets" : "Show done tickets", run: () => actions.toggleDone() },
+    { label: state.showDone ? "Hide completed issues" : "Show completed issues", run: () => actions.toggleDone() },
     { label: "Refresh", hint: "R", run: () => actions.refresh() },
-    ...state.people.map((u) => ({ label: u.displayName + "’s issues", icon: avatar(u), person: true, run: () => actions.setWho(u.accountId) })),
+    { label: "Keyboard shortcuts", hint: "?", run: () => toggleHelp() },
+    { label: "Toggle sidebar", hint: "[", more: true, run: () => toggleSidebar() },
+    ...[["status", "Group by status"], ["assignee", "Group by assignee"], ["priority", "Group by priority"], ["none", "No grouping"]]
+      .map(([v, label]) => ({ label, more: true, run: () => setDisplay("grouping", v) })),
+    ...[["updated", "Order by last updated"], ["priority", "Order by priority"], ["created", "Order by created"]]
+      .map(([v, label]) => ({ label, more: true, run: () => setDisplay("ordering", v) })),
+    ...state.people.map((u) => ({ label: u.displayName + "’s issues", icon: avatar(u), more: true, run: () => actions.setWho(u.accountId) })),
   ];
   const issueItem = (i) => ({ label: i.fields.summary, via: i.key, icon: statusIcon(i.fields.status), run: () => { state.known.set(i.key, i); actions.openIssue(i.key); } });
 
@@ -54,7 +64,7 @@ export function openPalette() {
   const query = () => {
     const q = input.value.trim();
     const ql = q.toLowerCase();
-    const cmds = commands().filter((c) => ql ? c.label.toLowerCase().includes(ql) : !c.person);
+    const cmds = commands().filter((c) => ql ? c.label.toLowerCase().includes(ql) : !c.more);
     const local = ql ? state.issues.filter((i) => matches(i, ql)).slice(0, 6) : [];
     draw(local, cmds, q ? "Searching Jira…" : "");
     clearTimeout(pal.timer);

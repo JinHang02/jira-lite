@@ -9,4 +9,16 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 input, textarea, select { font: inherit; color: inherit; }
 a { color: var(--link); text-decoration: none; }
 a:hover { text-decoration: underline; }
-kbd { font: 500 11px var(--font); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; color: var(--muted); background: var(--bg); }
+kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; vertical-align: middle;
+  font: 500 11px/1 var(--font); border: 1px solid var(--border); border-radius: 4px; color: var(--muted); background: var(--bg); }
+
+/* Focus rings for keyboard users only. Text fields show focus with their border instead. */
+:is(button, a, select, summary, [role="button"], [role="switch"], [tabindex]):focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 1px;
+}
+:is(button, a, select, [role="button"], [tabindex]):focus:not(:focus-visible) { outline: none; }
+[tabindex="-1"]:focus { outline: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0s !important; animation-duration: 0s !important; }
+}
