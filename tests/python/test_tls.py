@@ -76,8 +76,10 @@ class TlsServerTest(unittest.TestCase):
         self.assertEqual(self.get("/config", host="evil.example", ctx=ctx)[0], 403)
 
     def test_untrusted_client_is_rejected_without_crashing(self):
+        # A client that trusts no CA at all (not the system store, which can be slow to load).
+        untrusted = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         with self.assertRaises(ssl.SSLError):
-            self.get("/", ctx=ssl.create_default_context())
+            self.get("/", ctx=untrusted)
         ctx = ssl.create_default_context(cafile=os.path.join(self.certs, "ca.crt"))
         ctx.check_hostname = False
         self.assertEqual(self.get("/", ctx=ctx)[0], 200)  # still serving
