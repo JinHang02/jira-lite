@@ -8,6 +8,8 @@ import { avatar } from "./icons.js";
 import { renderAdf, textToAdf, plainSafe, adfToText } from "./adf.js";
 import { buildTimeline, collapseRuns, wasEdited } from "./activity.js";
 import { actions } from "./actions.js";
+import { mentionsOf } from "./mentions.js";
+import { attachMentions } from "./mentionpicker.js";
 
 const PENCIL = '<path d="M9.5 2.75l1.75 1.75-6.5 6.5-2.25.5.5-2.25z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>';
 const TRASH = '<path d="M2.75 4h8.5M5.5 4V2.75h3V4M4 4l.5 7.25h5L10 4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>';
@@ -20,9 +22,10 @@ const isMine = (c) => !!(state.me && c.author && c.author.accountId === state.me
 
 /**
  * Activity entries for an issue, oldest first. `histories` is the changelog (newest first),
- * `olderHidden` how many older changes Jira didn't return. `jiraUrl` is the issue in Jira.
+ * `olderHidden` how many older changes Jira didn't return. `jiraUrl` is the issue in Jira,
+ * `attachments` its files (media in comments shows them).
  */
-export function renderActivity(issue, comments, histories, { olderHidden = 0, jiraUrl } = {}) {
+export function renderActivity(issue, comments, histories, { olderHidden = 0, jiraUrl, attachments = [] } = {}) {
   const f = issue.fields;
   const entries = collapseRuns(buildTimeline({ comments, histories, created: f.created, creator: f.creator || f.reporter }));
   const box = el("div", { class: "timeline" });
@@ -32,7 +35,7 @@ export function renderActivity(issue, comments, histories, { olderHidden = 0, ji
   if (note && (!entries.length || entries[0].type !== "created")) box.append(note);
   for (const e of entries) {
     if (e.type === "created") { box.append(line(e)); if (note) box.append(note); continue; }
-    if (e.type === "comment") box.append(commentCard(issue.key, e.comment, jiraUrl));
+    if (e.type === "comment") box.append(commentCard(issue.key, e.comment, jiraUrl, attachments));
     else if (e.type === "more") {
       const id = issue.key + "|" + e.id;
       if (expanded.has(id)) box.append(...e.entries.map(line));
@@ -55,8 +58,8 @@ function line(e) {
     el("span", { class: "tl-text" }, el("span", { class: "tl-who" }, who), " " + e.text + " ", el("span", { class: "tl-sep" }, "·"), " ", when(e.at)));
 }
 
-function commentCard(key, c, jiraUrl) {
-  const body = el("div", { class: "cbody" }, renderAdf(c.body, { jiraUrl }));
+function commentCard(key, c, jiraUrl, attachments) {
+  const body = el("div", { class: "cbody" }, renderAdf(c.body, { jiraUrl, attachments }));
   const edited = wasEdited(c) ? el("span", { class: "edited", title: "Edited " + new Date(c.updated).toLocaleString() }, "· edited") : null;
   const tools = el("span", { class: "ctools" });
   const card = el("div", { class: "card", "data-cid": c.id },
@@ -99,6 +102,7 @@ function editComment(key, c, card, body) {
   card.dataset.editing = "1";
   const ta = el("textarea", { "aria-label": "Edit comment" });
   ta.value = adfToText(c.body);
+  const mentions = attachMentions(ta, mentionsOf(c.body));
   const save = el("button", { class: "btn primary", type: "button" }, "Save");
   const cancel = el("button", { class: "btn", type: "button" }, "Cancel");
   const msg = el("span", { class: "cmsg" }, "⌘↵ to save · esc to cancel");
@@ -116,7 +120,7 @@ function editComment(key, c, card, body) {
     save.disabled = true;
     msg.textContent = "Saving…";
     delete card.dataset.editing;  // let the reload re-render the card
-    const ok = await commentWrite(() => jira.updateComment(key, c.id, textToAdf(text)), "Comment updated", "Couldn't update the comment: ");
+    const ok = await commentWrite(() => jira.updateComment(key, c.id, textToAdf(text, mentions)), "Comment updated", "Couldn't update the comment: ");
     if (!ok) { card.dataset.editing = "1"; save.disabled = false; msg.textContent = "⌘↵ to save · esc to cancel"; }
   };
   cancel.addEventListener("click", close);

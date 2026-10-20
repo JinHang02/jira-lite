@@ -120,3 +120,38 @@ export const getIssueDetail = (key, extra = []) =>
   request("issue/" + enc(key) + "?fields=" + [...PANEL_FIELDS, ...extra].join(",") + "&expand=changelog");
 export const updateComment = (key, id, adfBody) => request("issue/" + enc(key) + "/comment/" + enc(id), { body: adfBody }, "PUT");
 export const deleteComment = (key, id) => request("issue/" + enc(key) + "/comment/" + enc(id), undefined, "DELETE");
+
+// ---- detail & content ----
+/** Open epics etc. for the parent picker: one page of {key, summary, status, issuetype}. */
+export const searchParents = (jql, maxResults = 50) =>
+  searchPage(jql, { fields: ["summary", "status", "issuetype"], maxResults }).then((r) => r.issues || []);
+
+/**
+ * Uploads files as multipart/form-data (field "file") to the issue. XHR rather than fetch, for
+ * upload progress: `onProgress(fraction)` gets 0..1. Resolves to Jira's list of the new
+ * attachments; rejects like `request` (Error with Jira's messages, or LoginRequired).
+ */
+export function uploadAttachments(key, files, onProgress = () => {}) {
+  const form = new FormData();
+  for (const f of files) form.append("file", f, f.name);
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/jira/issue/" + enc(key) + "/attachments");
+    xhr.setRequestHeader("X-Jira-Lite", "1");  // the browser sets the multipart Content-Type (boundary)
+    xhr.upload.addEventListener("progress", (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); });
+    xhr.addEventListener("error", () => reject(new Error("Upload failed: network error")));
+    xhr.addEventListener("abort", () => reject(new Error("Upload cancelled")));
+    xhr.addEventListener("load", () => {
+      if (xhr.status === 401 && xhr.getResponseHeader("X-Jira-Lite-Auth") === "login") {
+        onLoginRequired();
+        return reject(new LoginRequired());
+      }
+      let data = null;
+      try { data = xhr.responseText ? JSON.parse(xhr.responseText) : null; } catch (e) { /* plain-text error */ }
+      if (xhr.status >= 200 && xhr.status < 300) return resolve(data || []);
+      const parts = data ? [...(data.errorMessages || []), ...Object.entries(data.errors || {}).map(([k, v]) => k + ": " + v)] : [];
+      reject(new Error(parts.join("; ") || ("HTTP " + xhr.status + (xhr.responseText ? ": " + xhr.responseText.slice(0, 200) : ""))));
+    });
+    xhr.send(form);
+  });
+}

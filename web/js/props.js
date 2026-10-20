@@ -32,3 +32,47 @@ export function parseLabels(text) {
 export function requiredCustomFields(fields) {
   return (fields || []).filter((f) => f.required && /^customfield_/.test(f.fieldId || "")).map((f) => ({ id: f.fieldId, name: f.name }));
 }
+
+// ---- parent (epic) ----
+
+/**
+ * True if the issue type takes an epic as parent: standard types (hierarchy level 0). Epics
+ * (level 1+) and sub-tasks (level -1, whose parent is fixed) don't get the Parent row.
+ */
+export function parentAllowed(issuetype) {
+  if (!issuetype || issuetype.subtask) return false;
+  if (typeof issuetype.hierarchyLevel === "number") return issuetype.hierarchyLevel === 0;
+  return !/^epic$/i.test(issuetype.name || "");
+}
+
+/** The epic issue type's name among the project's types (hierarchy level 1), else "Epic". */
+export function epicTypeName(types) {
+  const t = (types || []).find((x) => x && x.hierarchyLevel === 1 && !x.subtask);
+  return t && t.name ? t.name : "Epic";
+}
+
+const KEY_RE = /^[A-Z][A-Z0-9_]*-\d+$/i;
+
+/**
+ * JQL for the parent picker: open epics of the project, newest first; `query` narrows them by
+ * key (when it looks like one) or by a summary prefix search. Characters Jira's text search
+ * treats as syntax are dropped.
+ */
+export function epicJql(project, query = "", typeName = "Epic") {
+  const clean = (s) => String(s).replace(/["\\]/g, " ");
+  let jql = 'project = "' + clean(project) + '" AND issuetype = "' + clean(typeName) + '" AND statusCategory != Done';
+  const q = String(query || "").trim();
+  if (KEY_RE.test(q)) jql += ' AND key = "' + q.toUpperCase() + '"';
+  else {
+    const words = q.replace(/[+\-&|!(){}[\]^~*?\\:"'/]/g, " ").trim().replace(/\s+/g, " ");
+    if (words) jql += ' AND summary ~ "' + words + '*"';
+  }
+  return jql + " ORDER BY updated DESC";
+}
+
+/** Epics ({key, fields.summary}) whose key or summary contains `query` (case-insensitive). */
+export function filterEpics(epics, query) {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return epics || [];
+  return (epics || []).filter((e) => e.key.toLowerCase().includes(q) || String((e.fields || {}).summary || "").toLowerCase().includes(q));
+}

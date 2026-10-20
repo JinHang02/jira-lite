@@ -14,12 +14,22 @@ import { renderActivity } from "./timeline.js";
 import { typeIcon } from "./typeicons.js";
 import { markRows } from "./cursor.js";
 import { actions } from "./actions.js";
+import { mentionsOf } from "./mentions.js";
+import { attachMentions } from "./mentionpicker.js";
+import { renderAttachments, bindDrop } from "./attachview.js";
 
 const HASH_SVG = '<path d="M5.25 2.5l-1 9M9.75 2.5l-1 9M2.75 5.25h9M2.25 8.75h9" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>';
 const LINK_SVG = '<path d="M6 8a2.5 2.5 0 0 0 3.5.25l1.75-1.75a2.5 2.5 0 0 0-3.5-3.5l-.75.75M8 6a2.5 2.5 0 0 0-3.5-.25L2.75 7.5a2.5 2.5 0 0 0 3.5 3.5l.75-.75" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>';
 const OPEN_SVG = '<path d="M8.5 2.5h3v3M11.5 2.5L6.5 7.5M10 8.5v2a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>';
 
 let detailSeq = 0;
+// People picked with @ in each issue's comment composer ("@Name" -> accountId), kept across
+// re-renders like the draft text itself.
+const composerMentions = new Map();
+const mentionsFor = (key) => {
+  if (!composerMentions.has(key)) composerMentions.set(key, new Map());
+  return composerMentions.get(key);
+};
 const browseUrl = (key) => state.cfg.site + "/browse/" + key;
 
 export function openIssue(key) {
@@ -28,6 +38,7 @@ export function openIssue(key) {
   markRows();
   const d = $("#detail");
   d.hidden = false;
+  bindDrop();
   if (!d.querySelector('.dh[data-key="' + CSS.escape(key) + '"]')) {
     d.replaceChildren(header(key), el("div", { class: "dscroll" }, el("p", { class: "nodesc" }, "Loading…")));
   }
@@ -60,7 +71,7 @@ export async function loadDetail() {
     const guess = known && known.fields.issuetype ? known.fields.issuetype.id : null;
     let customs = await requiredCustoms(guess);
     const [issue, comments, children] = await Promise.all([
-      jira.getIssueDetail(key, customs.map((c) => c.id)),
+      jira.getIssueDetail(key, ["attachment", ...customs.map((c) => c.id)]),
       jira.getComments(key),
       jira.searchIssues(childrenJql(key)).catch(() => []),
     ]);
@@ -128,13 +139,15 @@ function renderDetail(issue, comments, children, { customs, histories, olderHidd
   const box = el("textarea", { id: "cbox", placeholder: "Leave a comment…", "aria-label": "New comment" });
   box.dataset.key = issue.key;
   box.value = draft;
+  const picked = attachMentions(box, mentionsFor(issue.key));
   const send = el("button", { class: "btn primary", type: "button" }, "Comment");
   const cmsg = el("span", { class: "cmsg" }, "⌘↵ to send");
-  const submit = () => postComment(issue.key, box, send, cmsg);
+  const submit = () => postComment(issue.key, box, send, cmsg, picked);
   send.addEventListener("click", submit);
   box.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit(); });
 
-  const descHolder = el("div", {}, f.description ? renderAdf(f.description, { jiraUrl }) : el("p", { class: "nodesc" }, "No description."));
+  const attachments = f.attachment || [];
+  const descHolder = el("div", {}, f.description ? renderAdf(f.description, { jiraUrl, attachments }) : el("p", { class: "nodesc" }, "No description."));
   const descEdit = plainSafe(f.description)
     ? el("button", { class: "link", type: "button", onclick: () => editDescription(descHolder, issue.key, f.description) }, f.description ? "Edit" : "Add")
     : el("a", { class: "link", href: jiraUrl, target: "_blank", rel: "noopener", title: "Has formatting that plain-text editing would lose" }, "Edit in Jira ↗");
@@ -160,12 +173,13 @@ function renderDetail(issue, comments, children, { customs, histories, olderHidd
     renderProps(issue, customs),
     el("div", { class: "sec" }, "Description", el("span", { class: "spacer" }), descEdit),
     descHolder,
+    renderAttachments(issue),
     isSub ? null : el("div", { class: "sec" }, "Sub-issues" + (children.length ? " · " + done + "/" + children.length + " done" : ""),
       el("span", { class: "spacer" }),
       el("button", { class: "link", type: "button", onclick: () => actions.openCreate(issue) }, "+ Add sub-issue")),
     isSub || !children.length ? null : el("div", { class: "subs" }, subRows),
     el("div", { class: "sec" }, "Activity" + (comments.length ? " · " + comments.length + " comment" + (comments.length > 1 ? "s" : "") : "")),
-    renderActivity(issue, comments, histories, { olderHidden, jiraUrl }),
+    renderActivity(issue, comments, histories, { olderHidden, jiraUrl, attachments }),
     el("div", { class: "composer" }, box, el("div", { class: "crow" }, cmsg, send)));
 
   const body = el("div", { class: "dscroll", "data-key": issue.key }, main);
@@ -217,6 +231,7 @@ function editTitle(h1, key, old) {
 function editDescription(holder, key, doc) {
   const ta = el("textarea", { placeholder: "Add a description…", "aria-label": "Description" });
   ta.value = adfToText(doc);
+  const mentions = attachMentions(ta, mentionsOf(doc));
   const save = el("button", { class: "btn primary", type: "button" }, "Save");
   const cancel = el("button", { class: "btn", type: "button" }, "Cancel");
   const box = el("div", { class: "composer", "data-editing": "1" }, ta, el("div", { class: "crow" }, el("span", { class: "cmsg" }, "⌘↵ to save"), cancel, save));
@@ -229,7 +244,7 @@ function editDescription(holder, key, doc) {
     const text = ta.value.trim();
     save.disabled = true;
     delete box.dataset.editing;  // let the reload after saving re-render
-    updateFields(key, { description: text ? textToAdf(text) : null }, key + " description updated");
+    updateFields(key, { description: text ? textToAdf(text, mentions) : null }, key + " description updated");
   };
   cancel.addEventListener("click", restore);
   save.addEventListener("click", commit);
@@ -239,14 +254,15 @@ function editDescription(holder, key, doc) {
   });
 }
 
-async function postComment(key, box, btn, msg) {
+async function postComment(key, box, btn, msg, mentions) {
   if (!box.value.trim() || btn.disabled) return;
   state.busy = true;
   btn.disabled = true;
   msg.textContent = "Sending…";
   try {
-    await jira.addComment(key, textToAdf(box.value));
+    await jira.addComment(key, textToAdf(box.value, mentions));
     box.value = "";
+    mentions.clear();
     state.busy = false;
     await loadDetail();
     const s = $("#detail .dscroll");
