@@ -36,7 +36,50 @@ class ConfigEndpointTest(AppTestCase):
         self.assertEqual(status, 200)
         self.assertEqual(headers["content-type"], "application/json")
         self.assertEqual(headers["cache-control"], "no-store")
-        self.assertEqual(json.loads(body), {"project": "TST", "site": self.fake.url})
+        self.assertEqual(json.loads(body), {"project": "TST", "site": self.fake.url, "auth": "token"})
+
+
+class TokenModeAuthTest(AppTestCase):
+    def test_me_reports_token_mode(self):
+        status, headers, body = self.request("GET", "/auth/me", proxy_header=False)
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body), {"auth": "token"})
+        self.assertNotIn("set-cookie", headers)
+
+    def test_oauth_routes_absent(self):
+        for path in ("/oauth/login", "/oauth/callback?code=x&state=y"):
+            with self.subTest(path=path):
+                status, _, body = self.request("GET", path)
+                self.assertEqual((status, body), (404, b"not found"))
+
+    def test_logout_is_harmless(self):
+        status, _, body = self.request("POST", "/auth/logout", body=b"")
+        self.assertEqual((status, body), (204, b""))
+        status, _, _ = self.request("POST", "/auth/logout", body=b"", proxy_header=False)
+        self.assertEqual(status, 403)
+
+
+class OriginCheckTest(AppTestCase):
+    def test_foreign_origin_rejected_on_post_and_put(self):
+        for origin in ("https://evil.example", "null", "http://localhost:1", "https://localhost:%d" % self.port):
+            for method, path in (("POST", "/jira/issue"), ("PUT", "/jira/issue/X-1"), ("POST", "/auth/logout")):
+                with self.subTest(origin=origin, method=method, path=path):
+                    status, _, body = self.request(method, path, body=b"{}", headers={"Origin": origin})
+                    self.assertEqual((status, body), (403, b"bad origin"))
+        self.assertEqual(self.fake.requests, [])
+
+    def test_own_origin_or_none_allowed(self):
+        for origin in (None, "http://localhost:%d" % self.port, "http://127.0.0.1:%d" % self.port):
+            with self.subTest(origin=origin):
+                self.fake.requests.clear()
+                headers = {} if origin is None else {"Origin": origin}
+                status, _, _ = self.request("POST", "/jira/issue", body=b"{}", headers=headers)
+                self.assertEqual(status, 201)
+                self.assertEqual(len(self.fake.requests), 1)
+
+    def test_get_ignores_origin(self):
+        status, _, _ = self.request("GET", "/config", headers={"Origin": "https://evil.example"})
+        self.assertEqual(status, 200)
 
 
 class ProxyTest(AppTestCase):

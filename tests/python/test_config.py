@@ -137,3 +137,75 @@ class ExposureSettingsTest(unittest.TestCase):
             self.assertEqual((s.tls_cert, s.tls_key, s.scheme), (cert, key, "https"))
         finally:
             shutil.rmtree(tmp)
+
+
+OAUTH = {"JIRA_SITE": "https://x.atlassian.net", "ATLASSIAN_CLIENT_ID": "cid",
+         "ATLASSIAN_CLIENT_SECRET": "csecret", "JIRA_LITE_BASE_URL": "http://localhost:8765"}
+
+
+class OAuthSettingsTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.cert, self.key = os.path.join(self.tmp, "c.pem"), os.path.join(self.tmp, "k.pem")
+        for p in (self.cert, self.key):
+            open(p, "w").close()
+
+    def tls(self, **extra):
+        return dict(OAUTH, JIRA_LITE_TLS_CERT=self.cert, JIRA_LITE_TLS_KEY=self.key,
+                    JIRA_LITE_BASE_URL="https://192.168.0.113:8765", **extra)
+
+    def test_oauth_mode_needs_no_email_or_token(self):
+        s = settings_from_env(OAUTH)
+        self.assertTrue(s.oauth)
+        self.assertEqual((s.oauth_client_id, s.oauth_client_secret), ("cid", "csecret"))
+        self.assertEqual(s.redirect_uri, "http://localhost:8765/oauth/callback")
+        self.assertEqual((s.email, s.token), ("", ""))
+        self.assertEqual((s.atlassian_auth_url, s.atlassian_api_url),
+                         ("https://auth.atlassian.com", "https://api.atlassian.com"))
+
+    def test_token_mode_unchanged_without_client_id(self):
+        s = settings_from_env(dict(FULL, ATLASSIAN_CLIENT_SECRET="x", JIRA_LITE_BASE_URL="http://localhost:1"))
+        self.assertFalse(s.oauth)
+        self.assertEqual((s.base_url, s.oauth_client_secret), ("", ""))
+
+    def test_oauth_required_keys(self):
+        with self.assertRaises(ConfigError) as cm:
+            settings_from_env({"ATLASSIAN_CLIENT_ID": "cid"})
+        self.assertEqual(cm.exception.missing, ["JIRA_SITE", "ATLASSIAN_CLIENT_SECRET", "JIRA_LITE_BASE_URL"])
+
+    def test_base_url_validated_and_normalised(self):
+        self.assertEqual(settings_from_env(dict(OAUTH, JIRA_LITE_BASE_URL="http://LocalHost:8765/")).base_url,
+                         "http://localhost:8765")
+        for bad in ("localhost:8765", "ftp://x", "http://x/app", "http://x?q=1", "http://u:p@x",
+                    "https://x"):  # the last needs TLS
+            with self.subTest(bad=bad):
+                with self.assertRaises(ConfigError):
+                    settings_from_env(dict(OAUTH, JIRA_LITE_BASE_URL=bad))
+        s = settings_from_env(self.tls())
+        self.assertEqual((s.base_url, s.base_host), ("https://192.168.0.113:8765", "192.168.0.113:8765"))
+        with self.assertRaises(ConfigError):  # scheme must match the server's
+            settings_from_env(dict(self.tls(), JIRA_LITE_BASE_URL="http://192.168.0.113:8765"))
+
+    def test_bind_guard(self):
+        for host in ("0.0.0.0", "192.168.0.113"):
+            with self.subTest(host=host, mode="token+tls"):
+                env = dict(FULL, JIRA_LITE_BIND=host, JIRA_LITE_TLS_CERT=self.cert, JIRA_LITE_TLS_KEY=self.key)
+                with self.assertRaises(ConfigError) as ctx:
+                    settings_from_env(env)
+                self.assertIn("API token", str(ctx.exception))
+            with self.subTest(host=host, mode="oauth without tls"):
+                with self.assertRaises(ConfigError) as ctx:
+                    settings_from_env(dict(OAUTH, JIRA_LITE_BIND=host))
+                self.assertIn("HTTPS", str(ctx.exception))
+            with self.subTest(host=host, mode="oauth+tls"):
+                self.assertEqual(settings_from_env(self.tls(JIRA_LITE_BIND=host)).host, host)
+        self.assertEqual(settings_from_env(dict(OAUTH, JIRA_LITE_BIND="127.0.0.1")).host, "127.0.0.1")
+
+    def test_env_overrides_atlassian_keys(self):
+        merged = merge_env({"ATLASSIAN_CLIENT_ID": "file"},
+                           {"ATLASSIAN_CLIENT_ID": "env", "ATLASSIAN_CLIENT_SECRET": "s", "OTHER": "x"})
+        self.assertEqual(merged, {"ATLASSIAN_CLIENT_ID": "env", "ATLASSIAN_CLIENT_SECRET": "s"})
+
+    def test_repr_hides_client_secret(self):
+        self.assertNotIn("csecret", repr(settings_from_env(OAUTH)))
