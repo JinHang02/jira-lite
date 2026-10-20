@@ -488,7 +488,7 @@ function renderList() {
     const name = g.status.name;
     const closed = state.collapsed.has(name);
     if (!closed) visible.push(...g.items.map((i) => i.key));
-    return el("section", {},
+    return el("section", { "data-kind": statusKind(g.status) },
       el("div", { class: "gh" + (closed ? " closed" : ""), onclick: () => toggleGroup(name) },
         icon(16, '<path d="M5 6.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>', "chev"),
         statusIcon(g.status), el("span", {}, name), el("span", { class: "gcount" }, g.items.length)),
@@ -788,7 +788,12 @@ async function loadPeople() {
     state.showDone = !state.showDone;
     store("showDone", state.showDone ? "1" : "0");
     $("#showDone").setAttribute("aria-pressed", String(state.showDone));
-    loadList();
+    loadList().then(() => {
+      // Done sorts last, usually below the fold: jump to it so the toggle visibly does something.
+      const done = state.showDone && document.querySelector('#list section[data-kind="done"]');
+      const list = $("#list");
+      if (done) list.scrollBy({ top: done.getBoundingClientRect().top - list.getBoundingClientRect().top, behavior: "smooth" });
+    });
   });
   $("#refresh").addEventListener("click", refresh);
   setInterval(() => { if (!document.hidden) refresh(); }, REFRESH_MS);
