@@ -1,0 +1,17 @@
+@media (max-width: 900px) {
+  #updated, .seg .lbl { display: none; }
+  #q { width: 120px; }
+  #q:focus { width: 160px; }
+}
+@media (max-width: 760px) {
+  body { flex-direction: column; }
+  #side { width: auto; flex: none; flex-direction: row; gap: 4px; padding: 8px; overflow-x: auto; }
+  .ws, .side-h, .hints { display: none; }
+  .nav { width: auto; }
+  #frame { margin: 0 8px 8px; }
+  #top { padding: 0 8px 0 12px; gap: 6px; }
+  .qwrap, #showDone, .rdate, #newBtn kbd { display: none; }
+  #detail { position: fixed; inset: 0; z-index: 5; width: auto; min-width: 0; max-width: none; border: 0; }
+  .dscroll { padding: 20px 16px 40px; }
+  .overlay { padding-top: 16px; }
+}
