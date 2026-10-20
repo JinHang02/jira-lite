@@ -15,8 +15,13 @@ Set `PORT=9000` to use another port.
 
 ## Features
 
-- Ticket list for the project: Mine / Everyone / one person; Done hidden unless "Show Done" is ticked
-- Click a ticket for description and comments
-- Status dropdown applies Jira transitions
-- Comment box (Cmd/Ctrl+Enter sends)
-- Auto-refresh every 60 s while the tab is visible
+- Linear-style list: tickets grouped by status (collapsible, sticky headers), priority and status icons, assignee avatars
+- Sidebar: My issues / All issues / any person; "Show done" toggle in the header
+- Side panel ("peek") with description, comments and a comment box (Cmd/Ctrl+Enter sends)
+- Status menu applies Jira transitions (click the status icon or press `s`)
+- Keyboard: `j`/`k` move, `Enter` open, `Esc` close, `s` status, `c` comment, `r` refresh
+- Auto-refresh every 60 s while the tab is visible; light and dark theme follow the system
+
+## Design
+
+Colors, type and spacing follow Linear's look. The palette was derived from Linear's public theme generator (base, accent and contrast in LCH), and the icons are redrawn from their shapes as inline SVG. No Linear code or assets are included.
