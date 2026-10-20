@@ -6,13 +6,13 @@ Routes:
   POST /auth/logout          -> sign out (needs ``X-Jira-Lite: 1``)
   GET  /oauth/login          -> start "Sign in with Atlassian" (OAuth mode only)
   GET  /oauth/callback       -> finish it (OAuth mode only)
-  GET|POST|PUT /jira/*       -> Jira proxy (needs ``X-Jira-Lite: 1``)
+  GET|POST|PUT|DELETE /jira/* -> Jira proxy (needs ``X-Jira-Lite: 1``)
   GET  anything else         -> static file from the web root
 
 Every request must carry an allowed ``Host`` (``localhost:PORT``,
 ``127.0.0.1:PORT``, configured public hosts, the base URL's host): this
-blocks DNS rebinding. POST/PUT requests with an ``Origin`` header must come
-from an allowed origin. Other methods (incl. CORS preflight OPTIONS) are left
+blocks DNS rebinding. POST/PUT/DELETE requests with an ``Origin`` header must
+come from an allowed origin. Other methods (incl. CORS preflight OPTIONS) are left
 unimplemented, so cross-site requests can never pass a preflight.
 
 In OAuth mode a missing or expired session answers 401
@@ -81,6 +81,10 @@ class Handler(BaseHTTPRequestHandler):
         if self._host_ok() and self._origin_ok():
             self._proxy()
 
+    def do_DELETE(self) -> None:
+        if self._host_ok() and self._origin_ok():
+            self._proxy()
+
     # -- checks -----------------------------------------------------------
     def _host_ok(self) -> bool:
         """Only accept requests addressed to us by an allowed name (blocks DNS rebinding)."""
@@ -111,7 +115,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if match_prefix(self.path) is None:
             return self._send(404, b"not found", TEXT)
-        body = self._read_body() if self.command in ("POST", "PUT") else None
+        body = self._read_body()  # always drained, so the connection stays in sync
+        if self.command not in ("POST", "PUT"):
+            body = None  # GET/DELETE are forwarded without a body
         auth = self.server.auth
         try:
             if auth is None:
@@ -151,6 +157,8 @@ class Handler(BaseHTTPRequestHandler):
         return self.rfile.read(length)
 
     def _relay(self, result: ProxyResponse) -> None:
+        if result.status == 204:  # e.g. Jira's answer to DELETE
+            return self._send_empty(204)
         self._send(result.status, result.body, result.content_type)
 
     def _login_required(self) -> None:

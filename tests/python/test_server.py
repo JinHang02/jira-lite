@@ -21,7 +21,8 @@ class HostCheckTest(AppTestCase):
         bad = ("evil.com", "evil.com:%d" % self.port, "localhost", "localhost:1", "LOCALHOST:%d" % self.port)
         for host in bad:
             for method, path in (("GET", "/"), ("GET", "/config"), ("GET", "/jira/myself"),
-                                 ("POST", "/jira/issue"), ("PUT", "/jira/issue/X-1")):
+                                 ("POST", "/jira/issue"), ("PUT", "/jira/issue/X-1"),
+                                 ("DELETE", "/jira/issue/X-1/comment/1")):
                 with self.subTest(host=host, method=method, path=path):
                     status, headers, body = self.request(method, path, body=b"{}" if method != "GET" else None,
                                                          headers={"Host": host})
@@ -62,7 +63,8 @@ class TokenModeAuthTest(AppTestCase):
 class OriginCheckTest(AppTestCase):
     def test_foreign_origin_rejected_on_post_and_put(self):
         for origin in ("https://evil.example", "null", "http://localhost:1", "https://localhost:%d" % self.port):
-            for method, path in (("POST", "/jira/issue"), ("PUT", "/jira/issue/X-1"), ("POST", "/auth/logout")):
+            for method, path in (("POST", "/jira/issue"), ("PUT", "/jira/issue/X-1"), ("POST", "/auth/logout"),
+                                 ("DELETE", "/jira/issue/X-1/comment/1")):
                 with self.subTest(origin=origin, method=method, path=path):
                     status, _, body = self.request(method, path, body=b"{}", headers={"Origin": origin})
                     self.assertEqual((status, body), (403, b"bad origin"))
@@ -89,7 +91,8 @@ class ProxyTest(AppTestCase):
 
     def test_missing_or_wrong_header_is_403(self):
         for method, path in (("GET", "/jira/myself"), ("POST", "/jira/issue"),
-                             ("PUT", "/jira/issue/X-1"), ("POST", "/config")):
+                             ("PUT", "/jira/issue/X-1"), ("DELETE", "/jira/issue/X-1/comment/1"),
+                             ("POST", "/config")):
             for value in (None, "0", "true"):
                 with self.subTest(method=method, path=path, value=value):
                     headers = {} if value is None else {"X-Jira-Lite": value}
@@ -100,20 +103,21 @@ class ProxyTest(AppTestCase):
 
     def test_dotdot_is_400(self):
         for method, path in (("GET", "/jira/../../secret"), ("GET", "/jira/issue/..?x=1"),
-                             ("POST", "/jira/issue/%2e%2e/x"), ("PUT", "/jira/a/../b")):
+                             ("POST", "/jira/issue/%2e%2e/x"), ("PUT", "/jira/a/../b"),
+                             ("DELETE", "/jira/issue/X-1/comment/%2E%2E")):
             with self.subTest(method=method, path=path):
                 status, _, body = self.request(method, path, body=b"{}" if method != "GET" else None)
                 self.assertEqual((status, body), (400, b"bad path"))
         self.assertEqual(self.fake.requests, [])
 
     def test_post_put_to_non_proxy_path_is_404(self):
-        for method in ("POST", "PUT"):
+        for method in ("POST", "PUT", "DELETE"):
             with self.subTest(method=method):
                 status, _, body = self.request(method, "/index.html", body=b"{}")
                 self.assertEqual((status, body), (404, b"not found"))
 
     def test_unsupported_methods_not_implemented(self):
-        for method in ("DELETE", "OPTIONS", "PATCH"):
+        for method in ("OPTIONS", "PATCH"):
             with self.subTest(method=method):
                 status, _, _ = self.request(method, "/jira/issue/X-1")
                 self.assertEqual(status, 501)
@@ -152,6 +156,20 @@ class ProxyTest(AppTestCase):
                 self.assertEqual(req["headers"]["Content-Type"], "application/json")
                 self.assertEqual(req["headers"]["Authorization"], EXPECTED_AUTH)
 
+    def test_delete_forwards_and_relays_204(self):
+        status, headers, body = self.request("DELETE", "/jira/issue/X-1/comment/10042")
+        self.assertEqual((status, body), (204, b""))
+        self.assertNotIn("content-length", headers)
+        self.assertEqual(headers["cache-control"], "no-store")
+        req = self.last()
+        self.assertEqual((req["method"], req["path"], req["body"]), ("DELETE", "/rest/api/3/issue/X-1/comment/10042", b""))
+        self.assertEqual(req["headers"]["Authorization"], EXPECTED_AUTH)
+        self.assertNotIn("Content-Type", req["headers"])
+
+    def test_delete_error_passes_through(self):
+        status, _, body = self.request("DELETE", "/jira/issue/missing")
+        self.assertEqual((status, body), (404, b'{"errorMessages":["Issue does not exist"]}'))
+
     def test_post_without_body(self):
         status, _, _ = self.request("POST", "/jira/issue/X-1/transitions", body=b"")
         self.assertEqual(status, 201)
@@ -185,7 +203,7 @@ class UnreachableUpstreamTest(AppTestCase):
     upstream_url = closed_port_url()
 
     def test_unreachable_is_502(self):
-        for method in ("GET", "POST", "PUT"):
+        for method in ("GET", "POST", "PUT", "DELETE"):
             with self.subTest(method=method):
                 status, headers, body = self.request(method, "/jira/myself",
                                                      body=b"{}" if method != "GET" else None)

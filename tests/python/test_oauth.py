@@ -206,9 +206,27 @@ class OAuthProxyTest(OAuthAppTestCase):
                 self.assertEqual((call["method"], call["body"]), (method, b'{"a":1}'))
                 self.assertEqual(call["headers"]["Content-Type"], "application/json")
 
+    def test_proxy_delete_uses_bearer(self):
+        sid = self.sign_in()
+        self.state.requests.clear()
+        resp = self.request("DELETE", "/jira/issue/X-1/comment/7", session=sid)
+        self.assertEqual((resp.status, resp.body), (204, b""))
+        (call,) = self.jira_calls()
+        self.assertEqual((call["method"], call["path"], call["body"]), ("DELETE", JIRA_PREFIX + "issue/X-1/comment/7", b""))
+        self.assertEqual(call["headers"]["Authorization"], "Bearer access-1")
+        self.assertNotIn("Cookie", call["headers"])
+
+    def test_delete_rejects_foreign_origin(self):
+        sid = self.sign_in()
+        self.state.requests.clear()
+        resp = self.request("DELETE", "/jira/issue/X-1/comment/7", session=sid,
+                            headers={"Origin": "https://evil.example"})
+        self.assertEqual((resp.status, resp.body), (403, b"bad origin"))
+        self.assertEqual(self.state.requests, [])
+
     def test_missing_session_is_login_required(self):
         for sid in (None, "unknown"):
-            for method in ("GET", "POST", "PUT"):
+            for method in ("GET", "POST", "PUT", "DELETE"):
                 with self.subTest(sid=sid, method=method):
                     resp = self.request(method, "/jira/myself", session=sid,
                                         body=b"{}" if method != "GET" else None)
@@ -225,7 +243,7 @@ class OAuthProxyTest(OAuthAppTestCase):
         self.assertEqual((resp.status, resp.body), (400, b"bad path"))
         resp = self.request("GET", "/jira/a/%2e%2e/b")  # unsafe even without a session
         self.assertEqual(resp.status, 400)
-        self.assertEqual(self.request("DELETE", "/jira/issue/X-1", session=sid).status, 501)
+        self.assertEqual(self.request("PATCH", "/jira/issue/X-1", session=sid).status, 501)
         self.assertEqual(self.state.requests, [])
 
     def test_jira_401_passes_through_without_login_header_after_retry(self):

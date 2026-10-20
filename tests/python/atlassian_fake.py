@@ -91,10 +91,14 @@ class _Handler(BaseHTTPRequestHandler):
             return self._json(404, {"errorMessages": ["no such site"]})
         if path == prefix + "myself":
             return self._json(200, {"accountId": ACCOUNT_ID, "displayName": DISPLAY_NAME})
+        if self.command == "DELETE":
+            self.send_response(204)
+            self.end_headers()
+            return
         self._json(200 if self.command == "GET" else 201,
                    {"method": self.command, "path": self.path, "auth": self.headers.get("Authorization")})
 
-    do_GET = do_POST = do_PUT = _handle
+    do_GET = do_POST = do_PUT = do_DELETE = _handle
 
     def _token(self, form: Dict[str, Any]) -> None:
         state = self.server.state
