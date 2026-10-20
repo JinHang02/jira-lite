@@ -18,7 +18,9 @@ export const state = {
   current: null,            // key of the issue open in the detail panel
   cursor: null,             // key of the row/card highlighted by keyboard or mouse
   busy: false,              // a write is in flight; skip auto-refresh
-  lastRefresh: 0,
+  lastSync: 0,              // start time of the last successful list sync (full or delta)
+  lastFull: 0,              // start time of the last successful full reload
+  signedOut: false,         // the sign-in screen is up; no more requests or auto-refresh
 
   // ---- preferences (persisted) ----
   who: "mine",              // "mine" | "all" | accountId
@@ -38,6 +40,25 @@ export function store(k, v) {
 /** Reads a preference, or null. */
 export function recall(k) {
   try { return localStorage.getItem(PREFIX + k); } catch (e) { return null; }
+}
+
+/**
+ * Per-tab scratch storage (sessionStorage) for drafts that must survive the sign-in round trip
+ * to Atlassian. `stash(k, null)` removes; `unstash(k)` reads and removes. Failures are ignored.
+ */
+export function stash(k, v) {
+  try {
+    if (v == null) sessionStorage.removeItem(PREFIX + k);
+    else sessionStorage.setItem(PREFIX + k, v);
+  } catch (e) { /* storage unavailable */ }
+}
+
+export function unstash(k) {
+  try {
+    const v = sessionStorage.getItem(PREFIX + k);
+    sessionStorage.removeItem(PREFIX + k);
+    return v;
+  } catch (e) { return null; }
 }
 
 /** Restores persisted preferences into `state`. */

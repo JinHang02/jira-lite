@@ -6,9 +6,9 @@ import { statusIcon, prioIcon, avatar } from "./icons.js";
 import { openMenu } from "./menu.js";
 import { actions } from "./actions.js";
 
-/** Reloads the list and, if open, the detail panel after a write. */
+/** Syncs the list (a cheap delta, see views.syncList) and reloads the open detail panel after a write. */
 export function afterEdit() {
-  return Promise.all([actions.loadList(), state.current ? actions.loadDetail() : null]);
+  return Promise.all([actions.sync(), state.current ? actions.loadDetail() : null]);
 }
 
 /** Runs a write with `busy` set (so auto-refresh skips), then refreshes. `failMsg` formats the error. */

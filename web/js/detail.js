@@ -1,6 +1,6 @@
 // Detail (peek) panel: issue header, editable title/description, properties, sub-issues, comments.
 import * as jira from "./api.js";
-import { state } from "./state.js";
+import { state, stash, unstash } from "./state.js";
 import { $, el, icon, ICONS, toast } from "./dom.js";
 import { childrenJql } from "./jql.js";
 import { progress } from "./issues.js";
@@ -63,7 +63,7 @@ function renderDetail(issue, comments, children) {
   const d = $("#detail");
   // Keep an unsent comment draft and the scroll position across auto-refreshes.
   const oldBox = $("#cbox");
-  const draft = oldBox && oldBox.dataset.key === issue.key ? oldBox.value : "";
+  const draft = oldBox && oldBox.dataset.key === issue.key ? oldBox.value : stashedComment(issue.key);
   const scroll = d.querySelector(".dscroll[data-key='" + CSS.escape(issue.key) + "']");
   const scrollTop = scroll ? scroll.scrollTop : 0;
 
@@ -129,6 +129,18 @@ function renderDetail(issue, comments, children) {
       el("button", { class: "btn icon", title: "Close (esc)", onclick: closeDetail }, icon(14, ICONS.close, ""))),
     body);
   body.scrollTop = scrollTop;
+}
+
+/** A comment draft for `key` saved before a sign-in round trip (see auth.requireLogin), or "". */
+function stashedComment(key) {
+  const raw = unstash("commentDraft");
+  if (!raw) return "";
+  try {
+    const d = JSON.parse(raw);
+    if (d && d.key === key && typeof d.text === "string") return d.text;
+  } catch (e) { return ""; }
+  stash("commentDraft", raw);  // belongs to another issue: keep it for that one
+  return "";
 }
 
 /** Swaps the title for a textarea; Enter or blur saves, Escape cancels. */

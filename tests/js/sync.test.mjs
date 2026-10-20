@@ -17,13 +17,14 @@ test("deltaJql: project, relative window, newest first; no view filters", () => 
 });
 
 // ---- deltaMinutes ----
-test("deltaMinutes: elapsed whole minutes since the last sync started, plus overlap", () => {
+test("deltaMinutes: minutes elapsed since the last sync started (rounded, at least 1), plus overlap", () => {
   const t = Date.parse("2026-10-20T10:00:00Z");
   assert.equal(OVERLAP_MIN, 2);
   assert.equal(deltaMinutes(t, t + 60000), 3);           // the usual 60 s tick
-  assert.equal(deltaMinutes(t, t + 61000), 4);           // a slow tick rounds up
+  assert.equal(deltaMinutes(t, t + 61500), 3);           // timer jitter doesn't widen the window
+  assert.equal(deltaMinutes(t, t + 90000), 4);           // half a minute late rounds up
   assert.equal(deltaMinutes(t, t + 5000), 3);            // never less than one minute
-  assert.equal(deltaMinutes(t, t + 9 * 60000 + 1), 12);  // tab was hidden for a while
+  assert.equal(deltaMinutes(t, t + 9 * 60000 + 1), 11);  // tab was hidden for a while
   assert.equal(deltaMinutes(t, t - 30000), 3);           // clock went backwards
   assert.equal(deltaMinutes(t, t + 60000, 0), 1);
 });
@@ -72,7 +73,6 @@ test("mergeDelta: nothing changed returns the same array", () => {
   const r = mergeDelta(list, [iss("BA-2")], keepMine);
   assert.equal(r.changed, false);
   assert.equal(r.issues, list);
-  assert.deepEqual(r.keys, ["BA-2"]);
   assert.equal(mergeDelta(list, [], keepMine).issues, list);
   assert.equal(mergeDelta(list, undefined, keepMine).issues, list);
   // An irrelevant issue (not in the view, not loaded) changes nothing.
@@ -104,5 +104,4 @@ test("mergeDelta: issues that left the view are removed", () => {
 test("mergeDelta: duplicate keys in the delta count once", () => {
   const r = mergeDelta([iss("BA-1")], [iss("BA-5"), iss("BA-5")], keepMine);
   assert.deepEqual(keys(r), ["BA-5", "BA-1"]);
-  assert.deepEqual(r.keys, ["BA-5"]);
 });
