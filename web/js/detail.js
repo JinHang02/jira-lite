@@ -1,15 +1,23 @@
-// Detail (peek) panel: issue header, editable title/description, properties, sub-issues, comments.
+// Detail (peek) panel: issue header, editable title/description, properties, sub-issues, activity.
 import * as jira from "./api.js";
-import { state, stash, unstash } from "./state.js";
+import { state, stash, unstash, issueByKey } from "./state.js";
 import { $, el, icon, ICONS, toast } from "./dom.js";
 import { childrenJql } from "./jql.js";
 import { progress } from "./issues.js";
-import { ago, shortDate } from "./format.js";
 import { statusIcon, prioIcon, avatar } from "./icons.js";
-import { renderAdf, textToAdf, plainSafe, adfToText } from "./adf.js";
+import { renderAdf, textToAdf, plainSafe, adfToText, copyText } from "./adf.js";
 import { statusMenu, priorityMenu, assigneeMenu, updateFields } from "./edits.js";
+import { typeFields } from "./meta.js";
+import { requiredCustomFields } from "./props.js";
+import { renderProps } from "./propsview.js";
+import { renderActivity } from "./timeline.js";
+import { typeIcon } from "./typeicons.js";
 import { markRows } from "./cursor.js";
 import { actions } from "./actions.js";
+
+const HASH_SVG = '<path d="M5.25 2.5l-1 9M9.75 2.5l-1 9M2.75 5.25h9M2.25 8.75h9" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>';
+const LINK_SVG = '<path d="M6 8a2.5 2.5 0 0 0 3.5.25l1.75-1.75a2.5 2.5 0 0 0-3.5-3.5l-.75.75M8 6a2.5 2.5 0 0 0-3.5-.25L2.75 7.5a2.5 2.5 0 0 0 3.5 3.5l.75-.75" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>';
+const OPEN_SVG = '<path d="M8.5 2.5h3v3M11.5 2.5L6.5 7.5M10 8.5v2a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>';
 
 let detailSeq = 0;
 const browseUrl = (key) => state.cfg.site + "/browse/" + key;
@@ -21,7 +29,7 @@ export function openIssue(key) {
   const d = $("#detail");
   d.hidden = false;
   if (!d.querySelector('.dh[data-key="' + CSS.escape(key) + '"]')) {
-    d.replaceChildren(el("div", { class: "dh" }, el("span", { class: "crumb" }, key)), el("div", { class: "dscroll" }, el("p", { class: "nodesc" }, "Loading…")));
+    d.replaceChildren(header(key), el("div", { class: "dscroll" }, el("p", { class: "nodesc" }, "Loading…")));
   }
   loadDetail();
 }
@@ -33,101 +41,135 @@ export function closeDetail() {
   markRows();
 }
 
-/** (Re)loads the open issue with its comments and children. Stale responses are dropped. */
+/** Required custom fields ({id, name}) of an issue type from createmeta; [] if unavailable. */
+function requiredCustoms(typeId) {
+  if (!typeId) return Promise.resolve([]);
+  return typeFields(typeId).then(requiredCustomFields, (e) => { if (e.loginRequired) throw e; return []; });
+}
+
+/** (Re)loads the open issue with its changelog, comments and children. Stale responses are dropped. */
 export async function loadDetail() {
   const key = state.current;
   if (!key) return;
   const seq = ++detailSeq;
+  const stale = () => seq !== detailSeq || key !== state.current;
   try {
+    // Ask for the custom fields Jira requires on create (e.g. Client) in the same request when the
+    // issue type is already known from the list; otherwise fetch them afterwards.
+    const known = issueByKey(key);
+    const guess = known && known.fields.issuetype ? known.fields.issuetype.id : null;
+    let customs = await requiredCustoms(guess);
     const [issue, comments, children] = await Promise.all([
-      jira.getIssue(key),
+      jira.getIssueDetail(key, customs.map((c) => c.id)),
       jira.getComments(key),
       jira.searchIssues(childrenJql(key)).catch(() => []),
     ]);
-    if (seq !== detailSeq || key !== state.current) return;
+    if (stale()) return;
+    const typeId = issue.fields.issuetype ? issue.fields.issuetype.id : null;
+    if (typeId !== guess) {
+      customs = await requiredCustoms(typeId);
+      const missing = customs.filter((c) => !(c.id in issue.fields)).map((c) => c.id);
+      if (missing.length) {
+        try { Object.assign(issue.fields, (await jira.getIssue(key, missing)).fields || {}); } catch (e) { if (e.loginRequired) throw e; }
+      }
+      if (stale()) return;
+    }
+    const log = issue.changelog || {};
+    delete issue.changelog;  // keep the cached issue small
+    const histories = log.histories || [];
     state.known.set(issue.key, issue);
     for (const c of children) state.known.set(c.key, c);
-    renderDetail(issue, comments.reverse(), children);  // newest 100, shown oldest-first
+    renderDetail(issue, comments, children, { customs, histories, olderHidden: Math.max(0, (log.total || 0) - histories.length) });
   } catch (e) {
-    if (seq === detailSeq && key === state.current) {
-      $("#detail").replaceChildren(el("div", { class: "dh", "data-key": key }, el("span", { class: "crumb" }, key), el("span", { class: "spacer" }),
-        el("button", { class: "btn icon", title: "Close (esc)", onclick: closeDetail }, icon(14, ICONS.close, ""))),
-        el("div", { class: "dscroll" }, el("p", { style: "color:var(--err)" }, e.message)));
+    if (!stale()) {
+      $("#detail").replaceChildren(header(key), el("div", { class: "dscroll" }, el("p", { style: "color:var(--err)" }, e.message)));
     }
   }
 }
 
-function renderDetail(issue, comments, children) {
+/** Panel header: breadcrumb, copy key/link, open in Jira, close. */
+function header(key) {
+  const iconBtn = (title, svg, onclick) => {
+    const b = el("button", { class: "btn icon", type: "button", title, "aria-label": title }, icon(14, svg, ""));
+    b.addEventListener("click", onclick);
+    return b;
+  };
+  return el("div", { class: "dh", "data-key": key },
+    el("span", { class: "crumb" }, state.cfg.project), el("span", { class: "csep" }, "›"),
+    el("span", { class: "crumb ckey" }, key),
+    el("span", { class: "spacer" }),
+    iconBtn("Copy key " + key, HASH_SVG, () => copyText(key, key)),
+    iconBtn("Copy link", LINK_SVG, () => copyText(browseUrl(key), "link to " + key)),
+    el("a", { class: "btn icon", href: browseUrl(key), target: "_blank", rel: "noopener", title: "Open in Jira", "aria-label": "Open in Jira" }, icon(14, OPEN_SVG, "")),
+    el("span", { class: "dhsep" }),
+    el("button", { class: "btn icon", type: "button", title: "Close (esc)", "aria-label": "Close", onclick: closeDetail }, icon(14, ICONS.close, "")));
+}
+
+function renderDetail(issue, comments, children, { customs, histories, olderHidden }) {
   const f = issue.fields;
-  const { cfg } = state;
   const d = $("#detail");
+  // Don't clobber an inline editor (comment edit, labels, due date, delete confirm) on auto-refresh.
+  if (d.querySelector('.dscroll[data-key="' + CSS.escape(issue.key) + '"] [data-editing]')) return;
   // Keep an unsent comment draft and the scroll position across auto-refreshes.
   const oldBox = $("#cbox");
   const draft = oldBox && oldBox.dataset.key === issue.key ? oldBox.value : stashedComment(issue.key);
   const scroll = d.querySelector(".dscroll[data-key='" + CSS.escape(issue.key) + "']");
   const scrollTop = scroll ? scroll.scrollTop : 0;
+  const jiraUrl = browseUrl(issue.key);
 
   const chip = (id, title, kids, onclick) => {
-    const b = el("button", { class: "chip", id, title }, kids);
+    const b = el("button", { class: "chip", id, title, type: "button" }, kids);
     b.addEventListener("click", () => onclick(b));
     return b;
   };
   const h1 = el("h1", { class: "dtitle", title: "Click to edit" }, f.summary);
   h1.addEventListener("click", () => editTitle(h1, issue.key, f.summary));
 
-  const box = el("textarea", { id: "cbox", placeholder: "Leave a comment…" });
+  const box = el("textarea", { id: "cbox", placeholder: "Leave a comment…", "aria-label": "New comment" });
   box.dataset.key = issue.key;
   box.value = draft;
-  const send = el("button", { class: "btn primary" }, "Comment");
+  const send = el("button", { class: "btn primary", type: "button" }, "Comment");
   const cmsg = el("span", { class: "cmsg" }, "⌘↵ to send");
   const submit = () => postComment(issue.key, box, send, cmsg);
   send.addEventListener("click", submit);
   box.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit(); });
 
-  const descHolder = el("div", {}, f.description ? renderAdf(f.description) : el("p", { class: "nodesc" }, "No description."));
+  const descHolder = el("div", {}, f.description ? renderAdf(f.description, { jiraUrl }) : el("p", { class: "nodesc" }, "No description."));
   const descEdit = plainSafe(f.description)
-    ? el("button", { class: "link", onclick: () => editDescription(descHolder, issue.key, f.description) }, f.description ? "Edit" : "Add")
-    : el("a", { class: "link", href: browseUrl(issue.key), target: "_blank", rel: "noopener", title: "Has formatting that plain-text editing would lose" }, "Edit in Jira ↗");
+    ? el("button", { class: "link", type: "button", onclick: () => editDescription(descHolder, issue.key, f.description) }, f.description ? "Edit" : "Add")
+    : el("a", { class: "link", href: jiraUrl, target: "_blank", rel: "noopener", title: "Has formatting that plain-text editing would lose" }, "Edit in Jira ↗");
 
   const isSub = f.issuetype && f.issuetype.subtask;
   const { done } = progress(children);
   const subRows = children.map((c) => {
-    const sb = el("button", { class: "ibtn", title: c.fields.status.name + " · change status" }, statusIcon(c.fields.status));
+    const sb = el("button", { class: "ibtn", type: "button", title: c.fields.status.name + " · change status" }, statusIcon(c.fields.status));
     sb.addEventListener("click", (e) => { e.stopPropagation(); statusMenu(c.key, sb); });
     return el("div", { class: "subrow", onclick: () => openIssue(c.key) },
       sb, el("span", { class: "rid" }, c.key), el("span", { class: "rtitle" }, c.fields.summary), avatar(c.fields.assignee));
   });
 
-  const body = el("div", { class: "dscroll", "data-key": issue.key },
-    f.parent ? el("button", { class: "parent", title: "Open parent", onclick: () => openIssue(f.parent.key) },
+  const main = el("div", { class: "dlayout" },
+    f.parent ? el("button", { class: "parent", type: "button", title: "Open parent", onclick: () => openIssue(f.parent.key) },
       icon(14, ICONS.up, ""), el("span", {}, f.parent.key + " · " + ((f.parent.fields || {}).summary || ""))) : null,
     h1,
     el("div", { class: "props" },
       chip("schip", "Change status (s)", [statusIcon(f.status), f.status.name], (b) => statusMenu(issue.key, b)),
       chip("pchip", "Change priority (p)", [prioIcon(f.priority), f.priority ? f.priority.name : "No priority"], (b) => priorityMenu(issue.key, b)),
       chip("achip", "Change assignee (a)", [avatar(f.assignee), f.assignee ? f.assignee.displayName : "Unassigned"], (b) => assigneeMenu(issue.key, b)),
-      f.issuetype ? el("span", { class: "chip" }, f.issuetype.name) : null),
-    el("div", { class: "meta" }, "Created " + shortDate(f.created) + (f.reporter ? " by " + f.reporter.displayName : "")),
+      f.issuetype ? el("span", { class: "chip", title: "Issue type" }, typeIcon(f.issuetype), f.issuetype.name) : null),
+    renderProps(issue, customs),
     el("div", { class: "sec" }, "Description", el("span", { class: "spacer" }), descEdit),
     descHolder,
     isSub ? null : el("div", { class: "sec" }, "Sub-issues" + (children.length ? " · " + done + "/" + children.length + " done" : ""),
       el("span", { class: "spacer" }),
-      el("button", { class: "link", onclick: () => actions.openCreate(issue) }, "+ Add sub-issue")),
+      el("button", { class: "link", type: "button", onclick: () => actions.openCreate(issue) }, "+ Add sub-issue")),
     isSub || !children.length ? null : el("div", { class: "subs" }, subRows),
-    el("div", { class: "sec" }, "Activity" + (comments.length ? " · " + comments.length : "")),
-    ...comments.map((c) => el("div", { class: "card" },
-      el("div", { class: "who" }, avatar(c.author), el("span", { class: "name" }, c.author ? c.author.displayName : "?"),
-        el("span", { class: "when", title: new Date(c.created).toLocaleString() }, ago(c.created))),
-      renderAdf(c.body))),
+    el("div", { class: "sec" }, "Activity" + (comments.length ? " · " + comments.length + " comment" + (comments.length > 1 ? "s" : "") : "")),
+    renderActivity(issue, comments, histories, { olderHidden, jiraUrl }),
     el("div", { class: "composer" }, box, el("div", { class: "crow" }, cmsg, send)));
 
-  d.replaceChildren(
-    el("div", { class: "dh", "data-key": issue.key },
-      el("span", { class: "crumb" }, cfg.project), "›", el("span", { class: "crumb", style: "color:var(--title)" }, issue.key),
-      el("span", { class: "spacer" }),
-      el("a", { class: "btn", href: browseUrl(issue.key), target: "_blank", rel: "noopener" }, "Open in Jira ↗"),
-      el("button", { class: "btn icon", title: "Close (esc)", onclick: closeDetail }, icon(14, ICONS.close, ""))),
-    body);
+  const body = el("div", { class: "dscroll", "data-key": issue.key }, main);
+  d.replaceChildren(header(issue.key), body);
   body.scrollTop = scrollTop;
 }
 
@@ -145,7 +187,7 @@ function stashedComment(key) {
 
 /** Swaps the title for a textarea; Enter or blur saves, Escape cancels. */
 function editTitle(h1, key, old) {
-  const ta = el("textarea", { class: "dtitle", rows: "1" });
+  const ta = el("textarea", { class: "dtitle", rows: "1", "aria-label": "Title" });
   ta.value = old;
   const fit = () => { ta.style.height = "auto"; ta.style.height = ta.scrollHeight + "px"; };
   ta.addEventListener("input", fit);
@@ -173,11 +215,11 @@ function editTitle(h1, key, old) {
 
 /** Plain-text description editor (only offered when plainSafe). */
 function editDescription(holder, key, doc) {
-  const ta = el("textarea", { class: "", placeholder: "Add a description…" });
+  const ta = el("textarea", { placeholder: "Add a description…", "aria-label": "Description" });
   ta.value = adfToText(doc);
-  const save = el("button", { class: "btn primary" }, "Save");
-  const cancel = el("button", { class: "btn" }, "Cancel");
-  const box = el("div", { class: "composer" }, ta, el("div", { class: "crow" }, el("span", { class: "cmsg" }, "⌘↵ to save"), cancel, save));
+  const save = el("button", { class: "btn primary", type: "button" }, "Save");
+  const cancel = el("button", { class: "btn", type: "button" }, "Cancel");
+  const box = el("div", { class: "composer", "data-editing": "1" }, ta, el("div", { class: "crow" }, el("span", { class: "cmsg" }, "⌘↵ to save"), cancel, save));
   const view = holder.firstChild;
   holder.replaceChildren(box);
   ta.style.minHeight = "140px";
@@ -186,6 +228,7 @@ function editDescription(holder, key, doc) {
   const commit = () => {
     const text = ta.value.trim();
     save.disabled = true;
+    delete box.dataset.editing;  // let the reload after saving re-render
     updateFields(key, { description: text ? textToAdf(text) : null }, key + " description updated");
   };
   cancel.addEventListener("click", restore);

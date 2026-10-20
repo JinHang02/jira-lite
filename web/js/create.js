@@ -3,6 +3,7 @@ import * as jira from "./api.js";
 import { state, store, recall, stash, unstash } from "./state.js";
 import { el, icon, ICONS, toast } from "./dom.js";
 import { prioIcon, avatar } from "./icons.js";
+import { typeIcon } from "./typeicons.js";
 import { textToAdf } from "./adf.js";
 import { showModal, closeModal } from "./modal.js";
 import { issueTypes, typeFields } from "./meta.js";
@@ -10,6 +11,7 @@ import { actions } from "./actions.js";
 
 // Fields the dialog sets itself (or Jira fills), so they never get a generic required-field select.
 const HANDLED = new Set(["summary", "issuetype", "project", "reporter", "parent", "description", "priority", "assignee"]);
+const LIST_SVG = '<path d="M3 4h8M3 7h8M3 10h5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>';
 // Unsent new-issue text, kept if the dialog is closed (and across a sign-in, see stashCreateDraft).
 let createDraft = restoreDraft();
 
@@ -26,6 +28,28 @@ export function stashCreateDraft() {
   if (createDraft.title || createDraft.desc) stash("createDraft", JSON.stringify(createDraft));
 }
 
+/**
+ * A pill showing an icon and the selected option's label, with the native <select> laid over it
+ * (invisible) so keyboard, screen readers and the OS picker still work. `lead(value)` gives the icon.
+ */
+function chipSelect(label, options, value, lead, cls = "") {
+  const s = el("select", { "aria-label": label }, options.map(([v, text]) => el("option", { value: v }, text)));
+  s.value = value;
+  const leadBox = el("span", { class: "clead" });
+  const text = el("span", { class: "ctext" });
+  const chip = el("label", { class: "chip csel" + (cls ? " " + cls : ""), title: label },
+    leadBox, text, icon(14, ICONS.chev, "cchev"), s);
+  const sync = () => {
+    const opt = s.selectedOptions[0];
+    leadBox.replaceChildren(lead ? lead(s.value) || "" : "");
+    text.textContent = opt ? opt.textContent : "";
+    chip.classList.toggle("empty", !s.value);
+  };
+  s.addEventListener("change", sync);
+  sync();
+  return { chip, s };
+}
+
 /** Opens the create dialog; with `parent` it creates a sub-issue (or a child of an epic). */
 export async function openCreate(parent) {
   if (state.busy) return;
@@ -40,39 +64,40 @@ export async function openCreate(parent) {
   const lastType = recall("lastType");
   const defType = (types.find((t) => t.id === lastType) || types.find((t) => t.name === "Task") || types[0]).id;
 
-  const title = el("input", { class: "ntitle", placeholder: parent ? "Sub-issue title" : "Issue title", autocomplete: "off" });
-  const desc = el("textarea", { class: "ndesc", placeholder: "Add description…" });
+  const title = el("input", { class: "ntitle", placeholder: parent ? "Sub-issue title" : "Issue title", autocomplete: "off", "aria-label": "Title" });
+  const desc = el("textarea", { class: "ndesc", placeholder: "Add description…", "aria-label": "Description" });
   if (!parent) { title.value = createDraft.title; desc.value = createDraft.desc; }
 
-  const select = (cls, options, value, lead) => {
-    const s = el("select", {}, options.map(([v, label]) => el("option", { value: v }, label)));
-    s.value = value;
-    return { chip: el("label", { class: "chip" + (cls ? " " + cls : "") }, lead || null, s), s };
-  };
-  const type = select("", types.map((t) => [t.id, t.name]), defType);
+  const type = chipSelect("Issue type", types.map((t) => [t.id, t.name]), defType, (v) => typeIcon(types.find((t) => t.id === v)));
   const defPrio = (priorities.find((p) => p.name === "Medium") || priorities[0] || {}).id || "";
-  const prio = select("", [["", "No priority"], ...priorities.map((p) => [p.id, p.name])], defPrio, prioIcon(priorities.find((p) => p.id === defPrio)));
-  prio.s.addEventListener("change", () => prio.chip.firstChild.replaceWith(prioIcon(priorities.find((p) => p.id === prio.s.value))));
+  const prio = chipSelect("Priority", [["", "No priority"], ...priorities.map((p) => [p.id, p.name])], defPrio,
+    (v) => prioIcon(priorities.find((p) => p.id === v)));
   const ppl = [...(me ? [me] : []), ...people.filter((u) => !me || u.accountId !== me.accountId)];
-  const who = select("", [["", "Unassigned"], ...ppl.map((u) => [u.accountId, u.displayName + (me && u.accountId === me.accountId ? " (me)" : "")])],
-    me ? me.accountId : "");
-  const extras = el("span", { style: "display:contents" });
+  const who = chipSelect("Assignee", [["", "Unassigned"], ...ppl.map((u) => [u.accountId, u.displayName + (me && u.accountId === me.accountId ? " (me)" : "")])],
+    me ? me.accountId : "", (v) => avatar(ppl.find((u) => u.accountId === v) || null));
+  const extras = el("div", { class: "props" });
+  const reqSec = el("div", { class: "reqsec", hidden: true }, el("div", { class: "reqh" }, "Required by Jira"), extras);
   const warn = el("div", { class: "warn" });
   let dynamic = [];  // [{field, s, chip}]
   let fieldIds = new Set();
+  let typeSeq = 0;
 
   // Required fields Jira insists on (e.g. Client, Fix versions) get a select; sub-issues inherit the parent's value.
   async function loadTypeFields() {
+    const seq = ++typeSeq;
     extras.replaceChildren();
+    reqSec.hidden = true;
     warn.textContent = "";
     dynamic = [];
     let fields;
     try { fields = await typeFields(type.s.value); } catch (e) { warn.textContent = "Couldn't load fields: " + e.message; return; }
+    if (seq !== typeSeq) return;
     fieldIds = new Set(fields.map((x) => x.fieldId));
     const need = fields.filter((x) => x.required && !x.hasDefaultValue && !HANDLED.has(x.fieldId));
     let inherited = {};
     if (parent && need.length) {
       try { inherited = (await jira.getIssue(parent.key, need.map((x) => x.fieldId))).fields || {}; } catch (e) { /* no inheritance */ }
+      if (seq !== typeSeq) return;
     }
     const unsupported = [];
     for (const fld of need) {
@@ -82,18 +107,24 @@ export async function openCreate(parent) {
       const pid = Array.isArray(pv) ? (pv[0] || {}).id : (pv || {}).id;
       const last = recall("last." + fld.fieldId);
       const val = av.some((v) => v.id === pid) ? pid : (av.some((v) => v.id === last) ? last : "");
-      const sel = select("req", [["", fld.name + "…"], ...av.filter((v) => !v.archived).map((v) => [v.id, v.name || v.value])], val);
-      sel.chip.title = fld.name + " (required by Jira)";
+      const sel = chipSelect(fld.name + " (required by Jira)", [["", fld.name + "…"], ...av.filter((v) => !v.archived).map((v) => [v.id, v.name || v.value])], val,
+        () => icon(14, LIST_SVG, "cfield"), "req");
+      sel.s.addEventListener("change", () => sel.chip.classList.remove("bad"));
       dynamic.push({ field: fld, s: sel.s, chip: sel.chip });
       extras.append(sel.chip);
     }
+    reqSec.hidden = !dynamic.length;
     if (unsupported.length) warn.textContent = "Jira also requires " + unsupported.join(", ") + ", which can't be set here yet. Create it in Jira instead.";
   }
   type.s.addEventListener("change", loadTypeFields);
 
   const msg = el("span", { class: "cmsg" });
-  const create = el("button", { class: "btn primary" }, parent ? "Create sub-issue" : "Create issue");
-  const cancel = el("button", { class: "btn", onclick: closeModal }, "Cancel");
+  const create = el("button", { class: "btn primary", type: "button" }, parent ? "Create sub-issue" : "Create issue");
+  const cancel = el("button", { class: "btn", type: "button", onclick: closeModal }, "Cancel");
+  const more = el("input", { type: "checkbox", class: "tgl" });
+  more.checked = recall("createMore") === "1";
+  more.addEventListener("change", () => store("createMore", more.checked ? "1" : "0"));
+  const moreToggle = el("label", { class: "cmore", title: "Keep this dialog open to create another issue" }, more, el("span", {}, "Create more"));
 
   async function submit() {
     if (create.disabled) return;
@@ -116,8 +147,18 @@ export async function openCreate(parent) {
       for (const d of dynamic) store("last." + d.field.fieldId, d.s.value);
       if (!parent) createDraft = { title: "", desc: "" };
       title.value = "";
-      closeModal();
       toast("Created " + r.key);
+      if (more.checked && dialog.isConnected) {
+        // Keep type, priority, assignee and required fields for the next one.
+        desc.value = "";
+        create.disabled = false;
+        msg.textContent = "Created " + r.key + ".";
+        title.focus();
+        actions.sync();
+        if (parent && state.current === parent.key) actions.loadDetail();
+        return;
+      }
+      closeModal();
       await actions.sync();
       if (parent && state.current === parent.key) actions.loadDetail();
       else actions.openIssue(r.key);
@@ -129,13 +170,13 @@ export async function openCreate(parent) {
   }
   create.addEventListener("click", submit);
 
-  const dialog = el("div", { class: "modal", role: "dialog", "aria-label": "New issue" },
+  const dialog = el("div", { class: "modal cdialog", role: "dialog", "aria-label": parent ? "New sub-issue" : "New issue" },
     el("div", { class: "mhead" }, el("span", { class: "logo" }, cfg.project.slice(0, 2)),
       el("span", {}, parent ? cfg.project + " › " + parent.key + " › New sub-issue" : cfg.project + " › New issue"),
-      el("span", { class: "spacer" }), el("button", { class: "btn icon", title: "Close (esc)", onclick: closeModal }, icon(14, ICONS.close, ""))),
+      el("span", { class: "spacer" }), el("button", { class: "btn icon", type: "button", title: "Close (esc)", "aria-label": "Close", onclick: closeModal }, icon(14, ICONS.close, ""))),
     el("div", { class: "mbody" }, title, desc,
-      el("div", { class: "props" }, type.chip, prio.chip, el("label", { class: "chip" }, avatar(null), who.s), extras), warn),
-    el("div", { class: "mfoot" }, msg, cancel, create, el("kbd", { title: "Create" }, "⌘↵")));
+      el("div", { class: "props" }, type.chip, prio.chip, who.chip), reqSec, warn),
+    el("div", { class: "mfoot" }, moreToggle, msg, cancel, create, el("kbd", { title: "Create" }, "⌘↵")));
   dialog.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); }
     else if (e.key === "Enter" && e.target === title) { e.preventDefault(); desc.focus(); }

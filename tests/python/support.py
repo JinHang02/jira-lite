@@ -47,10 +47,16 @@ class _FakeJiraHandler(BaseHTTPRequestHandler):
             return self._reply(200, b"plain", "text/plain;charset=UTF-8")
         if path.endswith("/bad-request"):
             return self._reply(400, b'{"errors":{"summary":"required"}}')
+        if self.command == "DELETE":
+            return self._reply_empty(204)
         payload = {"method": self.command, "path": self.path}
         self._reply(200 if self.command == "GET" else 201, json.dumps(payload).encode())
 
-    do_GET = do_POST = do_PUT = _handle
+    do_GET = do_POST = do_PUT = do_DELETE = _handle
+
+    def _reply_empty(self, code: int) -> None:
+        self.send_response(code)
+        self.end_headers()
 
     def _reply(self, code: int, data: bytes, ctype: str = "application/json") -> None:
         self.send_response(code)
