@@ -28,7 +28,7 @@ from .config import Settings
 from .cookies import expire_cookie, parse_cookies, set_cookie
 from .oauth import AtlassianClient, InvalidGrant, OAuthError
 from .pages import LOGIN_PATH, error_page
-from .proxy import JiraProxy, ProxyResponse, error_response, upstream_url
+from .proxy import JiraProxy, Outgoing, ProxyResponse, error_response, outgoing, upstream_url
 from .sessions import IDLE_TIMEOUT, Clock, Session, SessionStore
 
 SESSION_COOKIE = "jl_session"
@@ -136,8 +136,9 @@ class OAuthService:
         return Reply(204, b"", "", (("Set-Cookie", expire_cookie(SESSION_COOKIE, self.secure)),))
 
     def forward(self, method: str, request_path: str, body: Optional[bytes],
-                cookie_header: Optional[str]) -> ProxyResponse:
-        """Proxy ``/jira/<rest>`` as the signed-in user.
+                cookie_header: Optional[str], content_type: Optional[str] = None) -> ProxyResponse:
+        """Proxy ``/jira/<rest>`` as the signed-in user (``content_type``: the browser's, see
+        :func:`~jira_lite.proxy.outgoing`).
 
         Raises :class:`~jira_lite.proxy.UnsafePathError`, ``LookupError``
         (not a proxy path) or :class:`LoginRequired`."""
@@ -149,13 +150,14 @@ class OAuthService:
         if session is None or session_id is None:
             raise LoginRequired()
         url = self.client.jira_base(session.cloud_id) + rel
+        out = outgoing(method, request_path, content_type)
         try:
             token = self._fresh_token(session_id, session)
-            result = self._send(method, url, body, token)
+            result = self._send(method, url, body, token, out)
             if result.status == 401:  # revoked or clock skew: refresh once and retry
                 retry = self._refresh(session_id, session, stale=token)
                 if retry != token:
-                    result = self._send(method, url, body, retry)
+                    result = self._send(method, url, body, retry, out)
         except OAuthError as e:
             return error_response(str(e))
         return result
@@ -197,8 +199,9 @@ class OAuthService:
         return session.access_token
 
     # -- helpers ----------------------------------------------------------
-    def _send(self, method: str, url: str, body: Optional[bytes], token: str) -> ProxyResponse:
-        return self.proxy.send(method, url, body, auth_header="Bearer " + token)
+    def _send(self, method: str, url: str, body: Optional[bytes], token: str,
+              out: Optional[Outgoing] = None) -> ProxyResponse:
+        return self.proxy.send(method, url, body, auth_header="Bearer " + token, out=out)
 
     def _cloud_id(self, access_token: str) -> Optional[str]:
         """The cloudId of the configured site among the user's accessible resources."""
