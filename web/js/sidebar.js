@@ -1,8 +1,10 @@
-// Sidebar: workspace, My/All issues, people, keyboard hints. Also owns the "whose issues" selection.
+// Sidebar: workspace, My/All issues, people, keyboard hints, the signed-in user (OAuth).
+// Also owns the "whose issues" selection.
 import { state, store } from "./state.js";
 import { $, el, icon } from "./dom.js";
 import { avatar, NAV_ICONS } from "./icons.js";
 import { actions } from "./actions.js";
+import { oauthMode, signOut } from "./auth.js";
 
 /** Header title for the current selection. */
 export function whoLabel() {
@@ -27,7 +29,15 @@ export function renderSide() {
       el("div", {}, k("j", "k"), "move  ", k("↵"), "open  ", k("esc"), "close"),
       el("div", {}, k("s", "p", "a"), "status/priority/assignee"),
       el("div", {}, k("m"), "comment  ", k("⌘B"), "board  ", k("r"), "refresh")),
+    oauthMode() && state.me ? userFooter(state.me) : null,
   ].filter(Boolean));
+}
+
+/** Avatar, name and "Sign out" for the signed-in Atlassian user. */
+function userFooter(me) {
+  return el("div", { class: "me", title: "Signed in as " + me.displayName },
+    avatar(me), el("span", { class: "name" }, me.displayName),
+    el("button", { class: "link", id: "signOut", onclick: signOut }, "Sign out"));
 }
 
 /** Switches to "mine", "all" or a person's accountId and reloads the list. */

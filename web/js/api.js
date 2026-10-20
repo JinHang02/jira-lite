@@ -5,9 +5,26 @@ export const FIELDS = ["summary", "status", "priority", "assignee", "updated", "
 const DETAIL_FIELDS = ["summary", "status", "description", "assignee", "reporter", "priority", "issuetype", "created", "parent", "subtasks"];
 const enc = encodeURIComponent;
 
+/** Thrown when the server says the OAuth session is missing or expired. */
+export class LoginRequired extends Error {
+  constructor() {
+    super("Signed out of Atlassian. Sign in again.");
+    this.name = "LoginRequired";
+    this.loginRequired = true;
+  }
+}
+
+let onLoginRequired = () => {};
+/** Sets what happens when a call comes back "login required" (main.js shows the sign-in screen). */
+export function setLoginHandler(fn) { onLoginRequired = fn; }
+
+/** True for the server's "sign in again" 401 (a Jira 401 without the header is a normal error). */
+const needsLogin = (r) => r.status === 401 && r.headers.get("X-Jira-Lite-Auth") === "login";
+
 /**
  * Calls the proxy. Relative paths go to /jira/; absolute ones are used as is.
- * POSTs when a body is given, unless `method` says otherwise. Throws Error with Jira's messages.
+ * POSTs when a body is given, unless `method` says otherwise. Throws Error with Jira's messages,
+ * or LoginRequired (after notifying the login handler) when the session has ended.
  */
 export async function request(path, body, method) {
   const opts = { method: method || (body !== undefined ? "POST" : "GET"), headers: { "X-Jira-Lite": "1" } };
@@ -16,6 +33,10 @@ export async function request(path, body, method) {
     opts.body = JSON.stringify(body);
   }
   const r = await fetch(path.startsWith("/") ? path : "/jira/" + path, opts);
+  if (needsLogin(r)) {
+    onLoginRequired();
+    throw new LoginRequired();
+  }
   const text = await r.text();
   let data = null;
   try { data = text ? JSON.parse(text) : null; } catch (e) { /* non-JSON error page */ }
@@ -28,6 +49,23 @@ export async function request(path, body, method) {
 
 // ---- server ----
 export const getConfig = () => fetch("/config").then((r) => r.json());
+
+/** The signed-in user ({accountId, displayName, auth}), or null when a sign-in is needed. */
+export async function getAuthMe() {
+  const r = await fetch("/auth/me", { headers: { "X-Jira-Lite": "1" } });
+  if (r.status === 401) return null;
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return r.json();
+}
+
+/** Ends the server-side session. */
+export async function logout() {
+  const r = await fetch("/auth/logout", { method: "POST", headers: { "X-Jira-Lite": "1" } });
+  if (!r.ok) throw new Error("HTTP " + r.status);
+}
+
+/** Where the "Sign in with Atlassian" button goes; the server redirects back to "/". */
+export const LOGIN_URL = "/oauth/login";
 
 // ---- search ----
 /** One page of /search/jql: {issues, nextPageToken, isLast}. */
@@ -68,6 +106,7 @@ export const createMetaTypes = (project) => request("issue/createmeta/" + enc(pr
 export const createMetaFields = (project, typeId) =>
   request("issue/createmeta/" + enc(project) + "/issuetypes/" + enc(typeId) + "?maxResults=200").then((r) => r.fields || r.results || []);
 export const getMyself = () => request("myself");
-export const getPriorities = () => request("priority/search?maxResults=50").then((r) => r.values || []);
+/** All priorities via the deprecated GET /priority (read scope); prefer createmeta (meta.js). */
+export const getPriorities = () => request("priority");
 export const getAssignable = (project) => request("user/assignable/search?project=" + enc(project) + "&maxResults=1000");
 export const getProjectStatuses = (project) => request("project/" + enc(project) + "/statuses");

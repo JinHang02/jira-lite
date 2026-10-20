@@ -1,24 +1,29 @@
 // New issue / new sub-issue dialog, including selects for fields Jira requires (e.g. Client, Fix versions).
 import * as jira from "./api.js";
-import { state, store, recall } from "./state.js";
+import { state, store, recall, stash, unstash } from "./state.js";
 import { el, icon, ICONS, toast } from "./dom.js";
 import { prioIcon, avatar } from "./icons.js";
 import { textToAdf } from "./adf.js";
 import { showModal, closeModal } from "./modal.js";
+import { issueTypes, typeFields } from "./meta.js";
 import { actions } from "./actions.js";
 
-const metaCache = new Map();  // issue type id -> Promise<fields>
 // Fields the dialog sets itself (or Jira fills), so they never get a generic required-field select.
 const HANDLED = new Set(["summary", "issuetype", "project", "reporter", "parent", "description", "priority", "assignee"]);
-let createDraft = { title: "", desc: "" };  // unsent new-issue text, kept if the dialog is closed
+// Unsent new-issue text, kept if the dialog is closed (and across a sign-in, see stashCreateDraft).
+let createDraft = restoreDraft();
 
-function typeFields(typeId) {
-  if (!metaCache.has(typeId)) {
-    const p = jira.createMetaFields(state.cfg.project, typeId);
-    p.catch(() => metaCache.delete(typeId));
-    metaCache.set(typeId, p);
-  }
-  return metaCache.get(typeId);
+function restoreDraft() {
+  try {
+    const d = JSON.parse(unstash("createDraft") || "null");
+    if (d && typeof d.title === "string" && typeof d.desc === "string") return d;
+  } catch (e) { /* no draft */ }
+  return { title: "", desc: "" };
+}
+
+/** Saves the new-issue draft for the sign-in round trip (call after closing the dialog). */
+export function stashCreateDraft() {
+  if (createDraft.title || createDraft.desc) stash("createDraft", JSON.stringify(createDraft));
 }
 
 /** Opens the create dialog; with `parent` it creates a sub-issue (or a child of an epic). */
@@ -26,7 +31,7 @@ export async function openCreate(parent) {
   if (state.busy) return;
   const { cfg, me, people, priorities } = state;
   if (!state.issueTypes.length) {
-    try { state.issueTypes = await jira.createMetaTypes(cfg.project); }
+    try { state.issueTypes = await issueTypes(); }
     catch (e) { return toast("Couldn't load issue types: " + e.message, true); }
   }
   const parentIsEpic = parent && parent.fields.issuetype && parent.fields.issuetype.hierarchyLevel === 1;
@@ -113,7 +118,7 @@ export async function openCreate(parent) {
       title.value = "";
       closeModal();
       toast("Created " + r.key);
-      await actions.loadList();
+      await actions.sync();
       if (parent && state.current === parent.key) actions.loadDetail();
       else actions.openIssue(r.key);
     } catch (e) {
