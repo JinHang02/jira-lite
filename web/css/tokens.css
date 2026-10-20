@@ -1,0 +1,43 @@
+/* Tokens follow Linear's generated theme (base/accent/contrast in LCH), see README. */
+:root {
+  color-scheme: light dark;  /* native scrollbars and selects follow the theme */
+  --font: "Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --row-h: 40px;
+  --ease: cubic-bezier(.25, .46, .45, .94);
+
+  --bg-sidebar: #eeeeef; --side-hover: #e4e4e5; --side-active: #e0e0e1;
+  --bg: #f8f8f9; --bg-hover: #eeeeef; --bg-group: #f1f1f2; --bg-focus: #eaeaeb;
+  --bg-selected: #e7e8f3; --elevated: #ffffff; --ctrl: #fefeff; --overlay: #0000003f;
+  --border: #dedede; --border-faint: #f1f1f1;
+  --title: #1b1b1b; --text: #2f2f31; --muted: #5b5c5e; --faint: #9c9c9e; --link: #3f60d9;
+  --accent: #6d78d5; --accent-hover: #5e69c1; --err: #d93a3e;
+  --shadow-low: 0 3px 6px -2px #00000005, 0 1px 1px #0000000a;
+  --shadow-med: 0 6px 18px #00000008, 0 3px 9px #0000000f, 0 1px 1px #0000000a;
+  --shadow-high: 0 16px 48px #00000024, 0 4px 12px #0000000f;
+
+  --st-backlog: #a8acb3; --st-todo: #9c9c9e; --st-started: #e5b53a; --st-review: #26a544;
+  --st-blocked: #f34e52; --st-done: #5e6ad2; --st-canceled: #95a2b3;
+
+  /* Priority icons follow Jira's colour coding (red / orange / amber / blue). */
+  --prio-highest: #e5493a; --prio-high: #ff7235; --prio-medium: #e5a000;
+  --prio-low: #2f7de1; --prio-lowest: #2f7de1; --prio-none: var(--faint);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-sidebar: #09090a; --side-hover: #1d1e1f; --side-active: #28292b;
+    --bg: #111212; --bg-hover: #191a1b; --bg-group: #151617; --bg-focus: #222223;
+    --bg-selected: #1b1e37; --elevated: #19191b; --ctrl: #1b1b1c; --overlay: #00000080;
+    --border: #232325; --border-faint: #1a1b1d;
+    --title: #ffffff; --text: #e2e3e5; --muted: #949597; --faint: #6b6b6e; --link: #6f7ffe;
+    --accent: #5e69d1; --accent-hover: #6974e1; --err: #f2777a;
+    --shadow-low: 0 .5px 1px 1px #0000004c;
+    --shadow-med: 0 3px 8px #0000001f, 0 2px 5px #0000001f, 0 1px 1px #0000001f;
+    --shadow-high: 0 16px 48px #00000080, 0 4px 12px #00000040;
+
+    --st-backlog: #bec2c8; --st-todo: #e2e2e2; --st-started: #f2c94c; --st-review: #43bc58;
+    --st-blocked: #f34e52; --st-done: #5e6ad2; --st-canceled: #95a2b3;
+
+    --prio-highest: #f2777a; --prio-high: #ff7235; --prio-medium: #f2c94c;
+    --prio-low: #4ea7fc; --prio-lowest: #4ea7fc;
+  }
+}
