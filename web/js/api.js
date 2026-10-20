@@ -110,3 +110,13 @@ export const getMyself = () => request("myself");
 export const getPriorities = () => request("priority");
 export const getAssignable = (project) => request("user/assignable/search?project=" + enc(project) + "&maxResults=1000");
 export const getProjectStatuses = (project) => request("project/" + enc(project) + "/statuses");
+
+// ---- detail panel ----
+/** Fields the detail panel shows; `extra` adds custom field ids (e.g. ones required on create). */
+const PANEL_FIELDS = ["summary", "status", "description", "assignee", "reporter", "creator", "priority", "issuetype", "created", "updated",
+  "parent", "subtasks", "labels", "duedate", "fixVersions", "components"];
+/** The issue with its newest 100 changelog histories (`issue.changelog.histories`, newest first). */
+export const getIssueDetail = (key, extra = []) =>
+  request("issue/" + enc(key) + "?fields=" + [...PANEL_FIELDS, ...extra].join(",") + "&expand=changelog");
+export const updateComment = (key, id, adfBody) => request("issue/" + enc(key) + "/comment/" + enc(id), { body: adfBody }, "PUT");
+export const deleteComment = (key, id) => request("issue/" + enc(key) + "/comment/" + enc(id), undefined, "DELETE");
