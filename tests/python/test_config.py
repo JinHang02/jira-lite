@@ -104,3 +104,36 @@ class MergeAndValidateTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ExposureSettingsTest(unittest.TestCase):
+    def test_defaults_are_loopback_http(self):
+        s = settings_from_env(FULL)
+        self.assertEqual((s.host, s.scheme, s.tls_cert, s.public_hosts), ("127.0.0.1", "http", "", ()))
+
+    def test_public_hosts_are_split_and_trimmed(self):
+        s = settings_from_env(dict(FULL, JIRA_LITE_PUBLIC_HOSTS=" 192.168.0.113 , box.local ,"))
+        self.assertEqual(s.public_hosts, ("192.168.0.113", "box.local"))
+
+    def test_network_bind_is_refused_while_auth_is_a_shared_token(self):
+        for host in ("0.0.0.0", "192.168.0.113", "::"):
+            with self.subTest(host=host):
+                with self.assertRaises(ConfigError) as ctx:
+                    settings_from_env(dict(FULL, JIRA_LITE_BIND=host))
+                self.assertIn("API token", str(ctx.exception))
+        self.assertEqual(settings_from_env(dict(FULL, JIRA_LITE_BIND="localhost")).host, "localhost")
+
+    def test_tls_needs_both_files_and_they_must_exist(self):
+        with self.assertRaises(ConfigError):
+            settings_from_env(dict(FULL, JIRA_LITE_TLS_CERT="certs/server.crt"))
+        with self.assertRaises(ConfigError):
+            settings_from_env(dict(FULL, JIRA_LITE_TLS_CERT="/nope.crt", JIRA_LITE_TLS_KEY="/nope.key"))
+        tmp = tempfile.mkdtemp()
+        try:
+            cert, key = os.path.join(tmp, "c.pem"), os.path.join(tmp, "k.pem")
+            for p in (cert, key):
+                open(p, "w").close()
+            s = settings_from_env(dict(FULL, JIRA_LITE_TLS_CERT=cert, JIRA_LITE_TLS_KEY=key))
+            self.assertEqual((s.tls_cert, s.tls_key, s.scheme), (cert, key, "https"))
+        finally:
+            shutil.rmtree(tmp)

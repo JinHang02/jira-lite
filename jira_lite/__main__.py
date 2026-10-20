@@ -1,6 +1,7 @@
 """Command-line entry point: ``python3 -m jira_lite``.
 
-Loads settings, binds 127.0.0.1:PORT and serves until Ctrl+C.
+Loads settings, binds 127.0.0.1:PORT (HTTPS when a certificate is configured)
+and serves until Ctrl+C.
 """
 
 import sys
@@ -20,12 +21,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 1
     try:
         server = create_server(settings)
-    except OSError as e:
+    except (OSError, ValueError) as e:  # ssl.SSLError is an OSError
         print("jira-lite: cannot listen on %s:%d (%s)" % (settings.host, settings.port, e),
               file=sys.stderr)
         return 1
-    print("jira-lite on http://localhost:%d  (project %s, Ctrl+C to stop)"
-          % (server.port, settings.project), flush=True)
+    print("jira-lite on %s://localhost:%d  (project %s, Ctrl+C to stop)"
+          % (settings.scheme, server.port, settings.project), flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
