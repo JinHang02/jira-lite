@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jira-lite"
+version = "0.2.0"
+description = "Small local web UI for Jira Cloud: serves a single-page frontend and proxies the Jira REST API."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = []
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Private :: Do Not Upload",
+]
+
+[tool.setuptools]
+packages = ["jira_lite"]
