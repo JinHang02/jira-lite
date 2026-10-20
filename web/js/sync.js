@@ -1,6 +1,8 @@
 // Pure helpers for the cheap auto-refresh: choose between a full reload and a delta sync,
 // size the delta window, and merge a delta into the loaded list. No DOM access.
 
+/** Auto-refresh (delta sync) interval. */
+export const REFRESH_MS = 60 * 1000;
 /** A full reload at least this often, to catch deleted or moved issues that a delta can't see. */
 export const FULL_EVERY_MS = 10 * 60 * 1000;
 /** Extra minutes added to every delta window (search index lag, request latency). */
@@ -49,4 +51,13 @@ export function mergeDelta(issues, delta, keep) {
   }
   if (!drop.size) return { issues, changed: false };
   return { issues: [...fresh, ...issues.filter((i) => !drop.has(i.key))], changed: true };
+}
+
+/** "just now", "1 min ago", "12 min ago", "3 h ago" for a past timestamp (ms); "" when never. */
+export function sinceLabel(ts, now = Date.now()) {
+  if (!ts) return "";
+  const min = Math.floor(Math.max(0, now - ts) / 60000);
+  if (min < 1) return "just now";
+  if (min < 60) return min + " min ago";
+  return Math.floor(min / 60) + " h ago";
 }
