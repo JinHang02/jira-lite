@@ -56,6 +56,13 @@ function startApp() {
   const back = unstash("returnTo");
   const key = location.hash.length > 1 ? decodeURIComponent(location.hash.slice(1)) : back;
   if (key) openIssue(key);
+  // A pasted link or Back/Forward changes the hash while the app is open: follow it.
+  // (openIssue/closeDetail use replaceState, which doesn't fire hashchange, so this can't loop.)
+  window.addEventListener("hashchange", () => {
+    const k = location.hash.length > 1 ? decodeURIComponent(location.hash.slice(1)) : "";
+    if (k && k !== state.current) openIssue(k);
+    else if (!k && state.current) closeDetail();
+  });
 }
 
 async function init() {
