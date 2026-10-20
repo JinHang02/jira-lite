@@ -2,7 +2,8 @@
 
 ``/jira/<rest>``  -> ``{site}/rest/api/3/<rest>``
 
-The query string is preserved. The HTTP layer is injectable (``opener``) so
+In OAuth mode :mod:`auth` uses the same sender with a per-user Bearer
+header and ``{api}/ex/jira/{cloudId}`` as the site. The query string is preserved. The HTTP layer is injectable (``opener``) so
 the mapping and error handling can be tested without a network.
 """
 
@@ -53,7 +54,7 @@ def upstream_url(site: str, request_path: str) -> Optional[str]:
     return site.rstrip("/") + PROXY_PREFIXES[prefix] + rest
 
 
-def _error_response(message: str) -> ProxyResponse:
+def error_response(message: str) -> ProxyResponse:
     body = json.dumps({"errorMessages": ["Proxy error: %s" % message]}).encode()
     return ProxyResponse(502, body, DEFAULT_CONTENT_TYPE)
 
@@ -65,7 +66,7 @@ def _content_type(headers: Any) -> str:
 
 
 class JiraProxy:
-    """Sends requests to Jira with Basic auth and relays the answer."""
+    """Sends requests to Jira (Basic auth unless told otherwise) and relays the answer."""
 
     def __init__(self, site: str, auth_header: str, timeout: float = 20.0,
                  opener: Optional[Opener] = None) -> None:
@@ -74,27 +75,28 @@ class JiraProxy:
         self.timeout = timeout
         self.opener = opener or urllib.request.urlopen
 
-    def build_request(self, method: str, url: str,
-                      body: Optional[bytes]) -> urllib.request.Request:
+    def build_request(self, method: str, url: str, body: Optional[bytes],
+                      auth_header: Optional[str] = None) -> urllib.request.Request:
         """Build the outgoing request with auth/accept/content-type headers."""
         req = urllib.request.Request(url, data=body, method=method)
-        req.add_header("Authorization", self.auth_header)
+        req.add_header("Authorization", auth_header or self.auth_header)
         req.add_header("Accept", "application/json")
         if body is not None:
             req.add_header("Content-Type", "application/json")
         return req
 
-    def send(self, method: str, url: str, body: Optional[bytes]) -> ProxyResponse:
+    def send(self, method: str, url: str, body: Optional[bytes],
+             auth_header: Optional[str] = None) -> ProxyResponse:
         """Perform the request; upstream HTTP errors pass through unchanged,
         any other failure becomes a 502 JSON error."""
-        req = self.build_request(method, url, body)
+        req = self.build_request(method, url, body, auth_header)
         try:
             with self.opener(req, timeout=self.timeout) as resp:
                 return ProxyResponse(resp.status, resp.read(), _content_type(resp.headers))
         except urllib.error.HTTPError as e:
             return ProxyResponse(e.code, e.read(), _content_type(e.headers))
         except Exception as e:  # timeout, DNS, connection refused/reset
-            return _error_response(str(e))
+            return error_response(str(e))
 
     def forward(self, method: str, request_path: str,
                 body: Optional[bytes] = None) -> ProxyResponse:
