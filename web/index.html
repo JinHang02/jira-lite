@@ -29,6 +29,10 @@
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="2.75" width="12" height="10.5" rx="2.25"/><path d="M6.25 3v10"/></svg>
     </button>
     <span id="title">My issues</span><span id="count"></span>
+    <button class="epic-link" id="epicLink" hidden>
+      <span class="lbl">Open epic</span>
+      <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 2.5h3v3M11.5 2.5L6.5 7.5M10 8.5v2a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h2"/></svg>
+    </button>
     <span class="seg" role="group" aria-label="View">
       <button id="vList" aria-pressed="true" title="List view (⌘B)" aria-label="List view">
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 4h10M3 8h10M3 12h10"/></svg><span class="lbl">List</span></button>
@@ -59,6 +63,7 @@
     <aside id="detail" hidden></aside>
   </div>
 </div>
+<div id="selbar" role="toolbar" aria-label="Selected issues" hidden></div>
 <div id="toast" role="status"></div>
 </body>
 </html>

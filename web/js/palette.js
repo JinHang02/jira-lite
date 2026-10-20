@@ -1,17 +1,19 @@
 // Command palette (⌘K): commands plus issue search (local matches first, then Jira full-text or key lookup).
 import * as jira from "./api.js";
 import { state } from "./state.js";
-import { el, icon, ICONS } from "./dom.js";
+import { $, el, icon, ICONS } from "./dom.js";
 import { searchJql } from "./jql.js";
 import { matches } from "./issues.js";
 import { statusIcon, avatar, NAV_ICONS } from "./icons.js";
 import { showModal, closeModal, activeModal } from "./modal.js";
 import { toggleHelp, isMac } from "./help.js";
 import { toggleSidebar } from "./sidebar.js";
-import { setDisplay } from "./display.js";
+import { setDisplay, promptSaveView } from "./display.js";
 import { actions } from "./actions.js";
 
 const SEARCH_DELAY_MS = 200;
+const VIEW_GLYPH = '<path d="M8 2.25l5.75 3L8 8.25l-5.75-3z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M2.25 8.25L8 11.25l5.75-3M2.25 10.75L8 13.75l5.75-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>';
+const EPIC_GLYPH = '<circle cx="8" cy="8" r="5.25" fill="none" stroke="currentColor" stroke-width="1.6" stroke-opacity=".35"/><path d="M8 2.75a5.25 5.25 0 0 1 5.25 5.25" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>';
 
 export const paletteOpen = () => (activeModal() || {}).kind === "palette";
 
@@ -29,6 +31,9 @@ export function openPalette() {
     { label: "My issues", icon: icon(16, NAV_ICONS.mine, ""), run: () => actions.setWho("mine") },
     { label: "All issues", icon: icon(16, NAV_ICONS.all, ""), run: () => actions.setWho("all") },
     { label: state.showDone ? "Hide completed issues" : "Show completed issues", run: () => actions.toggleDone() },
+    { label: "Save view…", icon: icon(16, VIEW_GLYPH, ""), run: () => promptSaveView($("#displayBtn")) },
+    ...state.savedViews.map((v) => ({ label: v.name, via: "View", icon: icon(16, VIEW_GLYPH, ""), more: true, run: () => actions.applySavedView(v.id) })),
+    ...state.epics.map((e) => ({ label: e.summary, via: "Epic · " + e.key, icon: icon(16, EPIC_GLYPH, ""), more: true, run: () => actions.setEpic(e.key) })),
     { label: "Refresh", hint: "R", run: () => actions.refresh() },
     { label: "Keyboard shortcuts", hint: "?", run: () => toggleHelp() },
     { label: "Toggle sidebar", hint: "[", more: true, run: () => toggleSidebar() },
@@ -64,7 +69,7 @@ export function openPalette() {
   const query = () => {
     const q = input.value.trim();
     const ql = q.toLowerCase();
-    const cmds = commands().filter((c) => ql ? c.label.toLowerCase().includes(ql) : !c.more);
+    const cmds = commands().filter((c) => ql ? (c.label + " " + (c.via || "")).toLowerCase().includes(ql) : !c.more);
     const local = ql ? state.issues.filter((i) => matches(i, ql)).slice(0, 6) : [];
     draw(local, cmds, q ? "Searching Jira…" : "");
     clearTimeout(pal.timer);

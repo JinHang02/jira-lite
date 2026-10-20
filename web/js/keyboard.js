@@ -9,6 +9,7 @@ import { toggleSidebar, closeDrawer } from "./sidebar.js";
 import { setCursor, move } from "./cursor.js";
 import { statusMenu, priorityMenu, assigneeMenu } from "./edits.js";
 import { clearFilter } from "./views.js";
+import { toggleSelect, extendBy, selectAll, clearSelection, hasSelection, bulkKey } from "./selection.js";
 import { actions } from "./actions.js";
 
 function onKey(e) {
@@ -32,13 +33,20 @@ function onKey(e) {
     }
     return;
   }
+  if (mod && !e.altKey && !e.shiftKey && k.toLowerCase() === "a") { e.preventDefault(); selectAll(); return; }
   if (mod || e.altKey) return;
+  if (e.shiftKey && (k === "ArrowDown" || k === "ArrowUp")) { e.preventDefault(); extendBy(k === "ArrowDown" ? 1 : -1); return; }
+  // With a multi-selection, s / p / a / l open the selection bar's menus instead.
+  if (hasSelection() && ["s", "p", "a", "l"].includes(k) && bulkKey(k)) { e.preventDefault(); return; }
   const target = state.current || state.cursor;
   // In the detail panel menus anchor to the property chips; otherwise to the row's buttons.
   const anchor = (id, sel) => (state.current && $(id)) || (rowFor(target) && (rowFor(target).querySelector(sel) || rowFor(target)));
   switch (k) {
     case "j": case "ArrowDown": move(1); break;
     case "k": case "ArrowUp": move(-1); break;
+    case "J": if (e.shiftKey) extendBy(1); else move(1); break;
+    case "K": if (e.shiftKey) extendBy(-1); else move(-1); break;
+    case "x": toggleSelect(target); break;
     case "Enter": case "o":
       // Enter on a focused button (header, sidebar, group header) activates it instead.
       if (k === "Enter" && e.target instanceof Element && e.target.closest("button, a, [role=button]")) return;
@@ -46,6 +54,7 @@ function onKey(e) {
       break;
     case "Escape":
       if (closeDrawer()) break;
+      if (clearSelection()) break;
       if (state.current) actions.closeDetail();
       else if (state.filter) clearFilter();
       break;

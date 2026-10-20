@@ -25,6 +25,15 @@ export function shortcutGroups(mac = true) {
       { keys: [["A"]], label: "Change assignee" },
       { keys: [["M"]], label: "Comment" },
     ] },
+    { title: "Selection", items: [
+      { keys: [["X"]], label: "Select issue" },
+      { keys: [["⇧", "J"], ["⇧", "K"]], label: "Extend selection" },
+      { keys: [["⇧", "Click"]], label: "Select a range" },
+      { keys: [[mod, "A"]], label: "Select all" },
+      { keys: [["S"], ["P"], ["A"]], label: "Status / priority / assignee of selected" },
+      { keys: [["L"]], label: "Add labels to selected" },
+      { keys: [["Esc"]], label: "Clear selection" },
+    ] },
     { title: "Views", items: [
       { keys: [[mod, "B"]], label: "Toggle list / board" },
       { keys: [["["]], label: "Toggle sidebar" },

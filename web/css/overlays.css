@@ -61,3 +61,34 @@ button.drow:hover { background: var(--bg-hover); }
 .keys { display: inline-flex; align-items: center; gap: 6px; flex: none; }
 .combo { display: inline-flex; gap: 3px; }
 .keys .or { color: var(--faint); font-size: 11.5px; }
+
+/* ---- Display › Save view ---- */
+.dsave { color: var(--muted); }
+.dsave:hover { color: var(--text); }
+.menu.saveview { width: 300px; padding: 6px 8px 8px; }
+.vname { width: 100%; height: 30px; margin: 2px 0 6px; padding: 0 8px; border: 1px solid var(--accent); border-radius: 6px; background: var(--ctrl);
+  outline: 0; color: var(--title); font-weight: 500; }
+.vdesc { padding: 0 2px 10px; color: var(--faint); font-size: 12px; overflow-wrap: anywhere; }
+.vfoot { display: flex; justify-content: flex-end; gap: 6px; }
+.vfoot .btn { height: 26px; }
+
+/* ---- selection bar (bottom centre) and its label picker ---- */
+#selbar { position: fixed; z-index: 15; left: 50%; bottom: 16px; transform: translateX(-50%); display: flex; align-items: center; gap: 2px;
+  max-width: calc(100vw - 32px); padding: 4px; background: var(--elevated); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: var(--shadow-high); animation: barin .16s var(--ease); }
+#selbar[hidden] { display: none; }
+@keyframes barin { from { opacity: 0; transform: translate(-50%, 6px); } }
+.selcount { padding: 0 8px 0 10px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.selcount b { color: var(--title); font-weight: 600; }
+.selsep { width: 1px; height: 18px; margin: 0 3px; flex: none; background: var(--border); }
+.selbtn { height: 28px; flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 0 8px; border-radius: 6px; color: var(--text);
+  font-weight: 500; white-space: nowrap; transition: background var(--fast) var(--ease), color var(--fast) var(--ease); }
+.selbtn > svg:first-child { color: var(--muted); }
+.selbtn:hover, .selbtn[aria-expanded="true"] { background: var(--bg-hover); }
+.selbtn .selchev { color: var(--faint); margin: 0 -4px 0 -3px; }
+.selbtn.busy { opacity: .55; cursor: progress; }
+.selbtn.clear { color: var(--muted); }
+.selbtn.clear .selx { display: none; }
+body.selecting #toast { bottom: 72px; }
+.menu.labelpop { width: 260px; padding: 4px; }
+.ldot { width: 8px; height: 8px; flex: none; margin: 0 3px; border-radius: 50%; background: hsl(var(--h) 58% 56%); }

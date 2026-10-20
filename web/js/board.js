@@ -8,6 +8,7 @@ import { statusIcon, prioIcon, avatar, subBadge } from "./icons.js";
 import { labelPills, dueChip } from "./chips.js";
 import { transition } from "./edits.js";
 import { setCursor } from "./cursor.js";
+import { selBox, clickSelect, bindSelect } from "./selection.js";
 import { actions } from "./actions.js";
 
 /** Renders `list` (already filtered and ordered) as status columns into #board. */
@@ -52,15 +53,16 @@ function toggleEmpty() {
 function card(i) {
   const f = i.fields;
   const c = el("div", {
-    class: "tcard" + (i.key === state.current ? " open" : "") + (i.key === state.cursor ? " cur" : ""), draggable: "true",
-    "data-key": i.key, onclick: () => actions.openIssue(i.key), onmouseenter: () => setCursor(i.key),
+    class: "tcard" + (i.key === state.current ? " open" : "") + (i.key === state.cursor ? " cur" : "") + (state.selected.has(i.key) ? " sel" : ""), draggable: "true",
+    "data-key": i.key, onclick: (e) => { if (!clickSelect(e, i.key)) actions.openIssue(i.key); }, onmouseenter: () => setCursor(i.key),
   },
-    el("div", { class: "top" }, el("span", {}, i.key), el("span", { class: "spacer" }), prioIcon(f.priority)),
+    el("div", { class: "top" }, el("span", {}, i.key), el("span", { class: "spacer" }), prioIcon(f.priority), selBox(i.key)),
     el("div", { class: "t" }, f.summary),
     el("div", { class: "bot" }, state.showSubProgress ? subBadge(f) : null, labelPills(f.labels), dueChip(i),
       el("span", { class: "spacer" }), avatar(f.assignee)));
   c.addEventListener("dragstart", (e) => { e.dataTransfer.setData("text/plain", i.key); e.dataTransfer.effectAllowed = "move"; c.classList.add("dragging"); });
   c.addEventListener("dragend", () => c.classList.remove("dragging"));
+  bindSelect(c, i.key);
   return c;
 }
 

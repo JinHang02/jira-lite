@@ -1,6 +1,8 @@
-// The header's Display popover: grouping, ordering, show completed, show sub-issue progress.
+// The header's Display popover: grouping, ordering, show completed, show sub-issue progress, and
+// "Save view…" (the name prompt for a saved view).
 import { state, store } from "./state.js";
-import { el } from "./dom.js";
+import { $, el } from "./dom.js";
+import { uniqueName } from "./savedviews.js";
 import { openPopover, closeMenu, activeMenu } from "./menu.js";
 import { actions } from "./actions.js";
 
@@ -40,7 +42,48 @@ export function toggleDisplay(anchor, focus = true) {
     el("div", { class: "dsep" }),
     toggle("Show completed", () => state.showDone, () => actions.toggleDone()),
     toggle("Show sub-issue progress", () => state.showSubProgress, () => setDisplay("showSubProgress", !state.showSubProgress)),
+    el("div", { class: "dsep" }),
+    el("button", { class: "drow dsave", onclick: () => promptSaveView(anchor) }, el("span", {}, "Save view…")),
   ], { label: "Display options", cls: "display", align: "end" });
   const first = focus && box.querySelector("select:not([disabled]), button");
   if (first) first.focus({ preventScroll: true });
+}
+
+/** "Board · grouped by priority · …": what a saved view of the current settings will remember. */
+function describeView() {
+  const person = state.people.find((u) => u.accountId === state.who);
+  const scope = state.epic ? "Epic " + state.epic : state.who === "mine" ? "My issues" : state.who === "all" ? "All issues" : person ? person.displayName : "A person's issues";
+  const parts = [scope, state.view === "board" ? "board" : "list"];
+  if (state.view !== "board" && state.grouping !== "status") parts.push(state.grouping === "none" ? "no grouping" : "by " + GROUP_LABELS[state.grouping].toLowerCase());
+  parts.push("ordered by " + ORDER_LABELS[state.ordering].toLowerCase());
+  if (state.showDone) parts.push("with completed");
+  if (state.filter.trim()) parts.push("filter “" + state.filter.trim() + "”");
+  return parts.join(" · ");
+}
+
+/**
+ * The "Save view" prompt under `anchor` (the Display button): a name, prefilled with the current
+ * title, and what the view will remember. Enter or Save stores it (sidebar.saveView).
+ */
+export function promptSaveView(anchor) {
+  const input = el("input", { class: "vname", "aria-label": "View name", maxlength: "60", spellcheck: "false", autocomplete: "off" });
+  input.value = uniqueName(state.savedViews, $("#title").textContent || "My view");
+  const done = (save) => {
+    const name = input.value.trim();
+    if (save && !name) return input.focus();
+    closeMenu();
+    if (save) actions.saveView(name);
+    if (anchor.isConnected) anchor.focus({ preventScroll: true });
+  };
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); done(true); } });
+  openPopover(anchor, [
+    el("div", { class: "mh" }, "Save view"),
+    input,
+    el("div", { class: "vdesc" }, describeView()),
+    el("div", { class: "vfoot" },
+      el("button", { class: "btn", onclick: () => done(false) }, "Cancel"),
+      el("button", { class: "btn primary", onclick: () => done(true) }, "Save")),
+  ], { label: "Save view", cls: "saveview", align: "end" });
+  input.focus();
+  input.select();
 }

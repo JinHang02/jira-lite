@@ -64,6 +64,15 @@ test("matchesView mirrors buildJql's filters", () => {
     'project = "BA" AND assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC');
 });
 
+test("matchesView with an epic: its children only, any assignee, done per showDone", () => {
+  const kid = (key, parent, extra) => { const i = iss(key, extra); if (parent) i.fields.parent = { key: parent }; return i; };
+  const issues = [kid("BA-1", "BA-7"), kid("BA-2", "BA-7", { assignee: OTHER }), kid("BA-3", "BA-7", { status: "done" }), kid("BA-4", "BA-8"), kid("BA-5", null)];
+  const v = (showDone) => (i) => matchesView(i, { who: "mine", meId: ME, showDone, epic: "BA-7" });
+  assert.deepEqual(issues.filter(v(false)).map((i) => i.key), ["BA-1", "BA-2"]);
+  assert.deepEqual(issues.filter(v(true)).map((i) => i.key), ["BA-1", "BA-2", "BA-3"]);
+  assert.equal(matchesView({ key: "BA-9" }, { who: "all", showDone: true, epic: "BA-7" }), false);
+});
+
 // ---- mergeDelta ----
 const keepMine = (i) => matchesView(i, { who: "mine", meId: ME, showDone: false });
 const keys = (r) => r.issues.map((i) => i.key);

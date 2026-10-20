@@ -155,3 +155,17 @@ export function uploadAttachments(key, files, onProgress = () => {}) {
     xhr.send(form);
   });
 }
+
+// ---- lists & navigation ----
+/** All issues matching `jql` with only `fields` (e.g. the sidebar's epic progress), up to `maxPages` pages of 100. */
+export async function searchFields(jql, fields, maxPages = 5) {
+  const out = [];
+  let token;
+  for (let page = 0; page < maxPages; page++) {
+    const r = await searchPage(jql, { fields, nextPageToken: token });
+    out.push(...(r.issues || []));
+    token = r.nextPageToken;
+    if (!token || r.isLast) break;
+  }
+  return out;
+}

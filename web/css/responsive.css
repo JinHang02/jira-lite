@@ -51,3 +51,21 @@
   .overlay { padding-top: 16px; }
   .help-b { grid-template-columns: 1fr; }
 }
+
+/* Multi-select on narrow screens: no hover, so checkboxes (and their gutter) show only while selecting. */
+@media (max-width: 760px) {
+  .row { padding-left: 12px; }
+  .selecting .row { padding-left: 34px; }
+  .row .selbox { opacity: 0; pointer-events: none; }
+  .selecting .row .selbox { opacity: 1; pointer-events: auto; }
+  .epic-link .lbl { display: none; }
+  .epic-link { width: 24px; padding: 0; justify-content: center; margin-left: 0; }
+  /* The title shrinks (ellipsis) so long names and the "Open epic" link never push the buttons off-screen;
+     the count gives way first. */
+  #title { flex: 0 1 auto; max-width: none; }
+  #count { flex: 0 100 auto; }
+  #selbar { bottom: 12px; }
+  .selbtn .lbl, .selbtn .selchev { display: none; }
+  .selbtn { padding: 0 9px; }
+  .selbtn.clear .selx { display: block; }
+}

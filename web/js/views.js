@@ -11,6 +11,7 @@ import { renderBoard } from "./board.js";
 import { toggleDisplay } from "./display.js";
 import { isMac } from "./help.js";
 import { activeMenu } from "./menu.js";
+import { syncSelection } from "./selection.js";
 import { actions } from "./actions.js";
 
 const DELTA_PAGE = 100;
@@ -19,7 +20,7 @@ let deltaSeq = 0;     // bumped by every delta; only the newest is applied
 let fullLoad = null;  // the in-flight full load, if any
 
 /** The current view's filters, as matchesView takes them. */
-const viewFilter = () => ({ who: state.who, meId: state.me ? state.me.accountId : null, showDone: state.showDone });
+const viewFilter = () => ({ who: state.who, meId: state.me ? state.me.accountId : null, showDone: state.showDone, epic: state.epic });
 
 /** Reloads the list (up to 500 issues) and re-renders. Older in-flight loads are discarded. */
 export function loadList() {
@@ -36,10 +37,10 @@ export function loadList() {
 
 async function fullReload() {
   const seq = ++listSeq;
-  const { cfg, who, showDone } = state;
+  const { cfg, who, showDone, epic } = state;
   const started = Date.now();
   try {
-    const out = await jira.searchAll(buildJql({ project: cfg.project, who, showDone }));
+    const out = await jira.searchAll(buildJql({ project: cfg.project, who, showDone, epic }));
     if (seq !== listSeq) return;  // a newer load started meanwhile
     state.issues = out;
     state.loaded = true;
@@ -66,7 +67,7 @@ export async function syncList() {
   if (fullLoad) await fullLoad;  // let a running reload land first; the delta then covers what it missed
   const now = Date.now();
   const view = viewFilter();
-  const plan = syncPlan({ now, lastFull: state.lastFull, lastSync: state.lastSync, canDelta: view.who !== "mine" || !!view.meId });
+  const plan = syncPlan({ now, lastFull: state.lastFull, lastSync: state.lastSync, canDelta: !!view.epic || view.who !== "mine" || !!view.meId });
   if (plan === "full") { await loadList(); return []; }
   const seq = listSeq;
   const dseq = ++deltaSeq;
@@ -103,12 +104,16 @@ export function renderMain() {
   } else if (!list.length) {
     state.visible = [];
     box.replaceChildren(emptyState(filtering));
-  } else {
+  }
+  let keys = [];
+  if (state.loaded && list.length) {
     const sorted = sortIssues(list, state.ordering);
+    keys = sorted.map((i) => i.key);
     if (state.view === "board") renderBoard(sorted);
     else renderList(sorted);
   }
   if (state.cursor && !state.visible.includes(state.cursor)) state.cursor = null;
+  syncSelection(keys);
 }
 
 /** Placeholder rows while the first load is in flight (keeps the layout from jumping). */
@@ -135,7 +140,9 @@ function emptyState(filtering) {
   }
   const person = state.people.find((u) => u.accountId === state.who);
   const open = state.showDone ? "" : "open ";
-  const title = state.who === "mine" ? "No " + open + "issues assigned to you"
+  const epic = state.epic && (state.epicInfo.get(state.epic) || {}).summary;
+  const title = state.epic ? "No " + open + "issues in " + (epic || state.epic)
+    : state.who === "mine" ? "No " + open + "issues assigned to you"
     : state.who === "all" ? "No " + open + "issues in " + state.cfg.project
       : "No " + open + "issues assigned to " + (person ? person.displayName : "this person");
   const buttons = [el("button", { class: "btn", onclick: () => actions.openCreate(null) }, icon(14, ICONS.plus, ""), "New issue")];
@@ -189,6 +196,7 @@ export function refresh() {
   if (!canRefresh()) return;
   loadList();
   reloadDetail();
+  actions.loadEpics();
 }
 
 /**
@@ -199,10 +207,15 @@ export async function autoRefresh() {
   if (!canRefresh()) return;
   const full = state.lastFull;
   const delta = await syncList();
+  const fullReloaded = state.lastFull !== full;
+  // Epic progress: refresh with the periodic full reload, or when an epic or an epic's child changed.
+  const parentKey = (i) => (i.fields && i.fields.parent ? i.fields.parent.key : null);
+  const isEpic = (i) => state.epicInfo.has(i.key) || ((i.fields && i.fields.issuetype) || {}).hierarchyLevel === 1;
+  if (fullReloaded || delta.some((i) => isEpic(i) || state.epicInfo.has(parentKey(i)))) actions.loadEpics();
   const cur = state.current;
   if (!cur) return;
-  const touched = delta.some((i) => i.key === cur || (i.fields && i.fields.parent && i.fields.parent.key === cur));
-  if (touched || state.lastFull !== full) reloadDetail();
+  const touched = delta.some((i) => i.key === cur || parentKey(i) === cur);
+  if (touched || fullReloaded) reloadDetail();
 }
 
 /** Clears the free-text filter box. */

@@ -479,6 +479,7 @@ class Jql:
     Fields: project, key/issuekey/id, assignee (= currentUser() / "<accountId>", is [not] EMPTY),
     status, statusCategory, issuetype/type, labels, parent, updated/created/duedate (relative
     -Nm/-Nh/-Nd/-Nw or yyyy-MM-dd [HH:mm]), text/summary/description (~ "word*").
+    ``[NOT] IN (a, "b", ...)`` for parent, key, issuetype, status, labels and assignee.
     ORDER BY updated, created, priority, key, duedate, status (ASC|DESC).
     Anything else raises :class:`JqlError` (a 400 like Jira's).
     """
@@ -570,7 +571,12 @@ class Jql:
             if self._is_word("not"):
                 self._next()
                 op = "is not"
-        elif kind == "word" and op.lower() in ("in", "not", "was", "changed"):
+        elif kind == "word" and op.lower() == "in":
+            return field, "in", self._parse_list(field)
+        elif kind == "word" and op.lower() == "not" and self._is_word("in"):
+            self._next()
+            return field, "not in", self._parse_list(field)
+        elif kind == "word" and op.lower() in ("not", "was", "changed"):
             raise JqlError("mock_jira: operator '%s' is not supported." % op.upper())
         elif kind != "op":
             raise JqlError("Error in the JQL Query: Expecting operator but got '%s'." % op)
@@ -585,6 +591,22 @@ class Jql:
         elif kind == "word" and value.lower() in ("empty", "null"):
             value = ("empty",)
         return field, op, value
+
+    def _parse_list(self, field: str) -> Tuple[str, List[str]]:
+        """The value list of ``field [NOT] IN ("a", b, ...)`` (functions such as openSprints() are not supported)."""
+        if self._next() != ("punct", "("):
+            raise JqlError("mock_jira: IN needs a parenthesised value list for '%s'." % field)
+        values = []  # type: List[str]
+        while True:
+            kind, value = self._next()
+            if kind not in ("word", "str"):
+                raise JqlError("Error in the JQL Query: Expecting a value in the list for '%s'." % field)
+            values.append(value)
+            sep = self._next()
+            if sep == ("punct", ")"):
+                return ("list", values)
+            if sep != ("punct", ","):
+                raise JqlError("Error in the JQL Query: Expecting ',' or ')' in the list for '%s'." % field)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -1137,6 +1159,14 @@ class MockJira:
             if op == "!=":
                 return lambda i: get(i) != want
             raise unsupported()
+
+        if op in ("in", "not in"):  # `field in (a, b)` is `field = a OR field = b`
+            if field not in ("parent", "key", "issuekey", "id", "issuetype", "type", "status", "labels", "assignee"):
+                raise unsupported()
+            each = [self._clause(field, "=", v) for v in value[1]]
+            if op == "in":
+                return lambda i: any(test(i) for test in each)
+            return lambda i: not any(test(i) for test in each)
 
         is_fn = isinstance(value, tuple) and value[0] == "fn"
         is_empty = isinstance(value, tuple) and value[0] == "empty"

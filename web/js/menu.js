@@ -13,7 +13,13 @@ function place(box, anchor, align) {
   const w = box.offsetWidth, h = box.offsetHeight;
   const left = align === "end" ? r.right - w : r.left;
   box.style.left = Math.max(8, Math.min(left, innerWidth - w - 8)) + "px";
-  box.style.top = (r.bottom + 4 + h > innerHeight - 8 ? Math.max(8, r.top - h - 4) : r.bottom + 4) + "px";
+  if (r.bottom + 4 + h > innerHeight - 8 && r.top - h - 12 >= 8) {
+    // Above the anchor, pinned by its bottom edge so content that grows later (filtering) grows upwards.
+    box.style.top = "auto";
+    box.style.bottom = (innerHeight - r.top + 12) + "px";  // clears the selection bar's frame too
+  } else {
+    box.style.top = (r.bottom + 4 + h > innerHeight - 8 ? Math.max(8, r.top - h - 4) : r.bottom + 4) + "px";
+  }
 }
 
 /**

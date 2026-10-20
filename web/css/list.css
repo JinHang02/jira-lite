@@ -34,3 +34,15 @@
   color: var(--muted); font-size: 11.5px; font-weight: 500; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .due.soon { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, var(--border)); }
 .due.overdue { color: var(--err); border-color: color-mix(in srgb, var(--err) 40%, var(--border)); }
+
+/* ---- multi-select: a checkbox in the row's left gutter (on hover, and on every row while selecting) ---- */
+.row { position: relative; padding-left: 30px; }
+.selbox { position: absolute; left: 8px; top: 50%; width: 16px; height: 16px; margin-top: -8px; display: grid; place-items: center;
+  border: 1px solid var(--faint); border-radius: 4px; background: var(--ctrl); color: transparent; opacity: 0;
+  transition: opacity var(--fast) var(--ease), background var(--fast) var(--ease), border-color var(--fast) var(--ease); }
+.selbox svg { width: 12px; height: 12px; }
+.row:hover .selbox, .selecting .selbox, .selbox:focus-visible { opacity: 1; }
+.selbox:hover { border-color: var(--muted); }
+.selbox[aria-checked="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.row.sel { background: color-mix(in srgb, var(--accent) 9%, var(--bg)); }
+.row.sel.cur { background: color-mix(in srgb, var(--accent) 14%, var(--bg)); }
