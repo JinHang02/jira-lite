@@ -50,7 +50,7 @@ button.chip:hover, label.chip:hover { background: var(--bg-hover); }
 .ptext { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pnone { color: var(--faint); }
 .pperson { display: inline-flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; }
-.labels { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 3px 0; }
+.pblock .labels { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 3px 0; }
 .label { height: 22px; display: inline-flex; align-items: center; gap: 5px; padding: 0 2px 0 8px; border: 1px solid var(--border); border-radius: 9999px;
   background: var(--ctrl); font-size: 12px; font-weight: 500; color: var(--text); }
 .ldot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none; }
