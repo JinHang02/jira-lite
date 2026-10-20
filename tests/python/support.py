@@ -144,7 +144,6 @@ class AppTestCase(unittest.TestCase):
             email="me@example.com",
             token="secret-token",
             project="TST",
-            board="7",
             port=0,
             timeout=PROXY_TIMEOUT,
         )

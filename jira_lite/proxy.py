@@ -1,7 +1,6 @@
-"""Forwarding of ``/jira/*`` and ``/agile/*`` requests to Jira Cloud.
+"""Forwarding of ``/jira/*`` requests to Jira Cloud.
 
 ``/jira/<rest>``  -> ``{site}/rest/api/3/<rest>``
-``/agile/<rest>`` -> ``{site}/rest/agile/1.0/<rest>``
 
 The query string is preserved. The HTTP layer is injectable (``opener``) so
 the mapping and error handling can be tested without a network.
@@ -13,7 +12,7 @@ import urllib.parse
 import urllib.request
 from typing import Any, Callable, NamedTuple, Optional
 
-PROXY_PREFIXES = {"/jira/": "/rest/api/3/", "/agile/": "/rest/agile/1.0/"}
+PROXY_PREFIXES = {"/jira/": "/rest/api/3/"}
 METHODS_WITH_BODY = ("POST", "PUT")
 DEFAULT_CONTENT_TYPE = "application/json"
 

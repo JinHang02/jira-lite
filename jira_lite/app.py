@@ -37,7 +37,7 @@ class JiraLiteServer(ThreadingHTTPServer):
     def public_config(self) -> Dict[str, str]:
         """Non-secret settings exposed to the frontend at ``/config``."""
         s = self.settings
-        return {"project": s.project, "site": s.site, "board": s.board}
+        return {"project": s.project, "site": s.site}
 
 
 def create_server(settings: Settings, web_root: Optional[str] = None,

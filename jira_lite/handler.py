@@ -1,8 +1,8 @@
 """HTTP request handler: Host/header checks and routing.
 
 Routes:
-  GET  /config               -> {"project", "site", "board"} JSON
-  GET|POST|PUT /jira/*, /agile/* -> Jira proxy (needs ``X-Jira-Lite: 1``)
+  GET  /config               -> {"project", "site"} JSON
+  GET|POST|PUT /jira/*           -> Jira proxy (needs ``X-Jira-Lite: 1``)
   GET  anything else         -> static file from the web root
 
 Every request must carry ``Host: localhost:PORT`` or ``127.0.0.1:PORT``

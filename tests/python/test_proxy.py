@@ -18,7 +18,6 @@ class UpstreamUrlTest(unittest.TestCase):
             "/jira/myself": SITE + "/rest/api/3/myself",
             "/jira/search/jql?jql=project%3DBA&maxResults=5":
                 SITE + "/rest/api/3/search/jql?jql=project%3DBA&maxResults=5",
-            "/agile/board/7/sprint?state=active": SITE + "/rest/agile/1.0/board/7/sprint?state=active",
             "/jira/": SITE + "/rest/api/3/",
         }
         for path, url in cases.items():
@@ -26,13 +25,13 @@ class UpstreamUrlTest(unittest.TestCase):
                 self.assertEqual(upstream_url(SITE + "/", path), url)
 
     def test_non_proxy_paths(self):
-        for path in ("/", "/config", "/jira", "/agilex/a", "/x/jira/a"):
+        for path in ("/", "/config", "/jira", "/agile/board/7", "/x/jira/a"):
             with self.subTest(path=path):
                 self.assertIsNone(match_prefix(path))
                 self.assertIsNone(upstream_url(SITE, path))
 
     def test_dotdot_rejected(self):
-        for path in ("/jira/../secret", "/jira/issue/..", "/agile/a/%2e%2e/b", "/jira/%2E%2E/x"):
+        for path in ("/jira/../secret", "/jira/issue/..", "/jira/a/%2e%2e/b", "/jira/%2E%2E/x"):
             with self.subTest(path=path):
                 with self.assertRaises(UnsafePathError):
                     upstream_url(SITE, path)

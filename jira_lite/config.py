@@ -35,7 +35,6 @@ class Settings:
     email: str
     token: str
     project: str = DEFAULT_PROJECT
-    board: str = ""
     port: int = DEFAULT_PORT
     host: str = "127.0.0.1"
     timeout: float = 20.0  # seconds per upstream Jira request
@@ -47,8 +46,8 @@ class Settings:
         return "Basic " + base64.b64encode(raw).decode()
 
     def __repr__(self) -> str:  # never leak the token into logs/tracebacks
-        return "Settings(site=%r, email=%r, token='***', project=%r, board=%r, port=%r)" % (
-            self.site, self.email, self.project, self.board, self.port)
+        return "Settings(site=%r, email=%r, token='***', project=%r, port=%r)" % (
+            self.site, self.email, self.project, self.port)
 
 
 def _unquote(value: str) -> str:
@@ -112,7 +111,6 @@ def settings_from_env(env: Mapping[str, str], port: Optional[str] = None) -> Set
         email=env["JIRA_EMAIL"],
         token=env["JIRA_TOKEN"],
         project=env.get("JIRA_PROJECT", DEFAULT_PROJECT),
-        board=env.get("JIRA_BOARD", ""),
         port=_parse_port(port),
     )
 

@@ -60,7 +60,7 @@ class MergeAndValidateTest(unittest.TestCase):
 
     def test_defaults(self):
         s = settings_from_env(FULL)
-        self.assertEqual((s.project, s.board, s.port, s.host), ("BA", "", 8765, "127.0.0.1"))
+        self.assertEqual((s.project, s.port, s.host), ("BA", 8765, "127.0.0.1"))
         self.assertEqual(s.timeout, 20.0)
 
     def test_missing_keys_listed(self):
@@ -90,11 +90,11 @@ class MergeAndValidateTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, tmp, True)
         path = os.path.join(tmp, ".env")
         with open(path, "w") as f:
-            f.write("JIRA_SITE=https://file\nJIRA_EMAIL=file@x\nJIRA_TOKEN=ft\nJIRA_BOARD=1\n")
+            f.write("JIRA_SITE=https://file\nJIRA_EMAIL=file@x\nJIRA_TOKEN=ft\n")
         s = load_settings(env_file=path,
                           environ={"JIRA_EMAIL": "env@x", "JIRA_PROJECT": "ENV", "PORT": "9001"})
         self.assertEqual((s.site, s.email, s.token), ("https://file", "env@x", "ft"))
-        self.assertEqual((s.project, s.board, s.port), ("ENV", "1", 9001))
+        self.assertEqual((s.project, s.port), ("ENV", 9001))
 
     def test_auth_header_and_repr_hides_token(self):
         s = Settings(site="https://x", email="a@b.c", token="tok")

@@ -36,7 +36,7 @@ class ConfigEndpointTest(AppTestCase):
         self.assertEqual(status, 200)
         self.assertEqual(headers["content-type"], "application/json")
         self.assertEqual(headers["cache-control"], "no-store")
-        self.assertEqual(json.loads(body), {"project": "TST", "site": self.fake.url, "board": "7"})
+        self.assertEqual(json.loads(body), {"project": "TST", "site": self.fake.url})
 
 
 class ProxyTest(AppTestCase):
@@ -45,7 +45,7 @@ class ProxyTest(AppTestCase):
         return self.fake.requests[0]
 
     def test_missing_or_wrong_header_is_403(self):
-        for method, path in (("GET", "/jira/myself"), ("GET", "/agile/board"), ("POST", "/jira/issue"),
+        for method, path in (("GET", "/jira/myself"), ("POST", "/jira/issue"),
                              ("PUT", "/jira/issue/X-1"), ("POST", "/config")):
             for value in (None, "0", "true"):
                 with self.subTest(method=method, path=path, value=value):
@@ -56,7 +56,7 @@ class ProxyTest(AppTestCase):
         self.assertEqual(self.fake.requests, [])
 
     def test_dotdot_is_400(self):
-        for method, path in (("GET", "/jira/../../secret"), ("GET", "/agile/board/..?x=1"),
+        for method, path in (("GET", "/jira/../../secret"), ("GET", "/jira/issue/..?x=1"),
                              ("POST", "/jira/issue/%2e%2e/x"), ("PUT", "/jira/a/../b")):
             with self.subTest(method=method, path=path):
                 status, _, body = self.request(method, path, body=b"{}" if method != "GET" else None)
@@ -90,15 +90,14 @@ class ProxyTest(AppTestCase):
         self.assertNotIn("X-Jira-Lite", req["headers"])
         self.assertEqual(json.loads(body)["path"], req["path"])
 
-    def test_agile_forwarding(self):
+    def test_agile_api_not_proxied(self):
         status, _, _ = self.request("GET", "/agile/board/7/sprint?state=active")
-        self.assertEqual(status, 200)
-        self.assertEqual(self.last()["path"], "/rest/agile/1.0/board/7/sprint?state=active")
+        self.assertEqual(status, 404)
+        self.assertEqual(self.fake.requests, [])
 
     def test_post_and_put_forward_body(self):
         for method, path, upstream in (("POST", "/jira/issue/X-1/comment", "/rest/api/3/issue/X-1/comment"),
-                                       ("PUT", "/jira/issue/X-1", "/rest/api/3/issue/X-1"),
-                                       ("POST", "/agile/sprint/3/issue", "/rest/agile/1.0/sprint/3/issue")):
+                                       ("PUT", "/jira/issue/X-1", "/rest/api/3/issue/X-1")):
             with self.subTest(method=method, path=path):
                 self.fake.requests.clear()
                 payload = json.dumps({"fields": {"summary": "héllo"}}).encode()
