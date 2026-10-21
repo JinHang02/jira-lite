@@ -2,6 +2,21 @@
 
 A fast, Linear-style web UI for Jira Cloud. It reads and writes your real Jira through the REST API, so there is no separate database and nothing to sync: teammates' changes show up on the next refresh, and your edits land in Jira immediately.
 
+![jira-lite: issue list grouped by status with the issue panel open (light theme)](docs/screenshots/list-detail-light.png)
+
+<table>
+  <tr>
+    <td><img src="docs/screenshots/board-dark.png" alt="Board view in the dark theme"></td>
+    <td><img src="docs/screenshots/command-menu-dark.png" alt="Command menu (⌘K) searching issues"></td>
+  </tr>
+  <tr>
+    <td align="center">Board view, drag a card to change its status</td>
+    <td align="center">⌘K command menu: search issues, jump to a key, run commands</td>
+  </tr>
+</table>
+
+<sub>Screenshots use the built-in demo data (<code>make dev-mock</code>), not a real Jira site.</sub>
+
 - **No dependencies, no build step.** The backend is a Python package using only the standard library (3.9+); the frontend is plain HTML, CSS and native ES modules.
 - **Light.** In one side-by-side measurement in Chrome's task manager, a jira-lite tab used about 30 MB against about 414 MB for a Jira board tab.
 - **Two ways to run it:** on your own machine with a personal API token, or hosted on your network where everyone signs in with their own Atlassian account.
