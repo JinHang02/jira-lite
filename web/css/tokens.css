@@ -25,6 +25,7 @@
   /* Priority icons follow Jira's colour coding (red / orange / amber / blue). */
   --prio-highest: #e5493a; --prio-high: #ff7235; --prio-medium: #e5a000;
   --prio-low: #2f7de1; --prio-lowest: #2f7de1; --prio-none: var(--faint);
+  --type-epic: #904ee2;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -44,5 +45,6 @@
 
     --prio-highest: #f2777a; --prio-high: #ff7235; --prio-medium: #f2c94c;
     --prio-low: #4ea7fc; --prio-lowest: #4ea7fc;
+    --type-epic: #a982f0;
   }
 }

@@ -2,7 +2,7 @@
 // instead of importing each other, which keeps the module graph acyclic. main.js wires it.
 
 const NAMES = ["openIssue", "closeDetail", "loadDetail", "loadList", "renderMain", "openCreate", "setWho", "setView", "toggleDone", "refresh", "sync",
-  "setEpic", "applySavedView", "saveView", "loadEpics"];
+  "setEpic", "applySavedView", "saveView", "loadEpics", "showAllStatuses", "untickDone"];
 
 export const actions = Object.fromEntries(NAMES.map((n) => [n, () => { throw new Error("actions." + n + " is not wired"); }]));
 

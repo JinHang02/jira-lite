@@ -2,13 +2,19 @@
 
   GET /files/content/{id}    -> Jira ``attachment/content/{id}``
   GET /files/thumbnail/{id}  -> Jira ``attachment/thumbnail/{id}``
+  GET /files/media/{id}      -> ``{"id": <Media Services file id>}`` (JSON, needs ``X-Jira-Lite``)
 
 ``<img src>`` and ``<a href>`` can't send custom headers, so these GET-only routes are the
 one exception to the proxy-header rule. They only map numeric attachment ids (nothing else of
 the API is reachable) and only answer requests the browser marks as coming from our own pages:
 ``Sec-Fetch-Site: same-origin`` (or ``none``: typed or bookmarked), or, for browsers without
-Fetch Metadata, an ``Origin``/``Referer`` on one of our allowed origins. Other sites can't
-hotlink them or probe which attachments exist.
+Fetch Metadata and for link clicks Safari marks ``cross-site`` (a new tab opened with
+``rel=noopener``), an ``Origin``/``Referer`` on one of our allowed origins. Other sites can't
+hotlink them (a cross-site subresource is refused whatever its Referer) or probe which
+attachments exist; a page can't make the browser send another origin's Referer.
+
+``/files/media/`` is for embedding a freshly uploaded image in a description: ADF media nodes
+name the Media Services file id, which Jira only reveals in that redirect (``.../file/{id}/binary``).
 
 Jira answers with a 303 to a short-lived Atlassian media URL; the proxy never follows it (that
 would send our credentials to another host) and the browser gets the redirect. If an upstream
@@ -22,6 +28,8 @@ from typing import Any, Collection, Optional, Tuple
 
 FILE_PREFIX = "/files/"
 FILE_RE = re.compile(r"^/files/(content|thumbnail)/(\d{1,20})$")
+MEDIA_RE = re.compile(r"^/files/media/(\d{1,20})$")
+MEDIA_ID_RE = re.compile(r"/file/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/")
 SAME_ORIGIN_FETCH = ("same-origin", "none")
 
 # Sent with every /files/ response.
@@ -42,6 +50,20 @@ def proxy_path(path: str) -> Optional[str]:
     return "/jira/attachment/%s/%s" % (m.group(1), m.group(2))
 
 
+def media_path(path: str) -> Optional[str]:
+    """``/files/media/{id}`` -> ``/jira/attachment/content/{id}`` (whose redirect names the file)."""
+    m = MEDIA_RE.match(path)
+    return "/jira/attachment/content/%s" % m.group(1) if m else None
+
+
+def media_id(location: Optional[str]) -> Optional[str]:
+    """The Media Services file id in an attachment redirect, or None."""
+    if not redirect_ok(location):
+        return None
+    m = MEDIA_ID_RE.search(urllib.parse.urlsplit(location).path)
+    return m.group(1).lower() if m else None
+
+
 def _origin_of(url: Optional[str]) -> Optional[str]:
     if not url:
         return None
@@ -53,9 +75,11 @@ def _origin_of(url: Optional[str]) -> Optional[str]:
 
 def fetch_allowed(headers: Any, allowed_origins: Collection[str]) -> bool:
     """True if the request comes from one of our own pages (or was typed by the user)."""
-    site = headers.get("Sec-Fetch-Site")
-    if site:
-        return site.strip().lower() in SAME_ORIGIN_FETCH
+    site = (headers.get("Sec-Fetch-Site") or "").strip().lower()
+    if site in SAME_ORIGIN_FETCH:
+        return True
+    if site and (headers.get("Sec-Fetch-Mode") or "").strip().lower() != "navigate":
+        return False  # an <img>/fetch from another site
     origin = headers.get("Origin") or _origin_of(headers.get("Referer"))
     return origin is not None and origin in allowed_origins
 

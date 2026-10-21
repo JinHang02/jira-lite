@@ -33,6 +33,36 @@ export function requiredCustomFields(fields) {
   return (fields || []).filter((f) => f.required && /^customfield_/.test(f.fieldId || "")).map((f) => ({ id: f.fieldId, name: f.name }));
 }
 
+// ---- editable fields (editmeta) ----
+
+const PICKABLE = ["option", "version", "component"];
+
+/**
+ * How a field from editmeta is edited here: "one" (pick one), "many" (pick any number) or null
+ * (not editable as a pick list: no allowed values, no "set" operation, or another schema).
+ */
+export function pickKind(meta) {
+  if (!meta || !Array.isArray(meta.allowedValues) || !(meta.operations || []).includes("set")) return null;
+  const s = meta.schema || {};
+  if (s.type === "array" && PICKABLE.includes(s.items)) return "many";
+  return PICKABLE.includes(s.type) ? "one" : null;
+}
+
+/** Allowed values to offer: archived versions and disabled options only when currently set. */
+export function pickChoices(meta, current) {
+  const set = new Set((Array.isArray(current) ? current : current ? [current] : []).map((v) => String(v.id)));
+  return ((meta && meta.allowedValues) || []).filter((v) => set.has(String(v.id)) || !(v.archived || v.disabled));
+}
+
+/** The field value to PUT for the picked allowed values ({id}): an array for "many", else one or null. */
+export function pickValue(kind, picked) {
+  if (kind === "many") return (picked || []).map((v) => ({ id: String(v.id) }));
+  return picked ? { id: String(picked.id) } : null;
+}
+
+/** True if editmeta lets the user set the field (e.g. reporter needs "Modify Reporter"). */
+export const canSet = (meta) => !!(meta && (meta.operations || []).includes("set"));
+
 // ---- parent (epic) ----
 
 /**
@@ -75,4 +105,23 @@ export function filterEpics(epics, query) {
   const q = String(query || "").trim().toLowerCase();
   if (!q) return epics || [];
   return (epics || []).filter((e) => e.key.toLowerCase().includes(q) || String((e.fields || {}).summary || "").toLowerCase().includes(q));
+}
+
+// ---- breadcrumb ----
+
+/**
+ * The issue's ancestors, top first (e.g. [epic, parent] for a sub-task): its `parent`, then each
+ * parent's own parent as far as `lookup(key)` (a cached issue or null) knows. At most 3; stops on a cycle.
+ */
+export function ancestry(issue, lookup) {
+  const out = [];
+  const seen = new Set([issue.key]);
+  let p = issue.fields && issue.fields.parent;
+  while (p && p.key && !seen.has(p.key) && out.length < 3) {
+    seen.add(p.key);
+    out.unshift(p);
+    const full = lookup(p.key);
+    p = full && full.fields ? full.fields.parent : null;
+  }
+  return out;
 }

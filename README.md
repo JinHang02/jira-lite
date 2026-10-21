@@ -23,12 +23,18 @@ A fast, Linear-style web UI for Jira Cloud. It reads and writes your real Jira t
 
 ## Features
 
-- **List** — tickets grouped by status (collapsible, sticky headers) with priority, status, sub-task progress and assignee
+- **List** — tickets grouped by status, assignee, priority or component (the board shows a row per group) (collapsible, sticky headers) with priority, status, sub-task progress and assignee
 - **Board** (`⌘B`) — one column per status; drag a card to change its status
 - **Filters** — My issues / All issues / any person in the sidebar, "Show done" in the header, `/` to filter the loaded list
 - **Peek panel** — parent link, description, sub-issues, comments and a comment box
 - **Create** (`c` or **New issue**) — includes the custom fields your project requires; sub-issues inherit them from the parent
-- **Edit in place** — status `s`, priority `p`, assignee `a`; click the title or a plain-text description to edit it
+- **Edit in place** — status `s`, priority `p`, assignee `a`, issue type, reporter, fix versions, components and required custom fields (e.g. Client); click the title to edit it; descriptions edit as Markdown, simple tables included (images and other rich parts are kept as they are)
+- **Screenshots in descriptions** — paste (⌘V), drop or pick an image while editing; it's attached and embedded
+- **Image viewer** — click an image to see it full size, ←/→ through the issue's images (like Jira)
+- **Pick the statuses you see** — Display › Statuses: untick Backlog, To Do… to hide them in the list and on the board
+- **Resizable panel** — drag its left edge (or focus it and use ←/→); double-click to reset
+- **Delete an issue** — trash button in the panel; type `delete` to confirm (sub-tasks go with it)
+- **Issue types at a glance** — type icon on every row and card, epics in purple, `↳ PARENT` link on child issues
 - **Command menu** (`⌘K`) — search all issues in the project, jump to a key, run commands
 - **Keyboard first** — `j`/`k` move, `Enter` open, `Esc` close, `m` comment, `r` refresh
 - **Auto-refresh** every 60 s while the tab is visible, fetching only what changed

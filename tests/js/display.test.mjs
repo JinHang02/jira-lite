@@ -14,7 +14,7 @@ const iss = (key, { status = ST.todo, priority = null, assignee = null, updated,
 const keys = (list) => list.map((i) => i.key);
 
 test("option lists", () => {
-  assert.deepEqual(GROUPINGS, ["status", "assignee", "priority", "none"]);
+  assert.deepEqual(GROUPINGS, ["status", "assignee", "priority", "component", "none"]);
   assert.deepEqual(ORDERINGS, ["updated", "priority", "created"]);
 });
 
@@ -42,13 +42,13 @@ test("sortIssues by priority: most urgent first, then most recently updated", ()
   assert.deepEqual(keys(sortIssues(list, "priority")), ["highest", "high-new", "high-old", "low", "none"]);
 });
 
-test("groupIssues by status: KIND_ORDER, keyed by status name, order kept", () => {
+test("groupIssues by status: workflow order, keyed by status name, order kept", () => {
   const list = [iss("1", { status: ST.todo }), iss("2", { status: ST.prog }), iss("3", { status: ST.todo }), iss("4", { status: ST.done })];
   const g = groupIssues(list, "status");
-  assert.deepEqual(g.map((x) => x.key), ["In Progress", "To Do", "Done"]);
-  assert.deepEqual(g.map((x) => x.label), ["In Progress", "To Do", "Done"]);
-  assert.equal(g[0].status, ST.prog);
-  assert.deepEqual(keys(g[1].items), ["1", "3"]);
+  assert.deepEqual(g.map((x) => x.key), ["To Do", "In Progress", "Done"]);
+  assert.deepEqual(g.map((x) => x.label), ["To Do", "In Progress", "Done"]);
+  assert.equal(g[1].status, ST.prog);
+  assert.deepEqual(keys(g[0].items), ["1", "3"]);
 });
 
 test("groupIssues by assignee: by name, Unassigned last", () => {
@@ -105,4 +105,21 @@ test("isDone reads the status category", () => {
   assert.equal(isDone(iss("1", { status: ST.done })), true);
   assert.equal(isDone(iss("1", { status: ST.prog })), false);
   assert.equal(isDone({}), false);
+});
+
+test("groupIssues by component: each issue once, by its components together, A-Z, none last", () => {
+  const withC = (key, ...names) => ({ key, fields: { summary: key, status: ST.todo, components: names.map((name, n) => ({ id: String(n), name })) } });
+  const list = [withC("1", "Web"), withC("2"), withC("3", "Web", "API"), withC("4", "API"), withC("5", "API", "Web"), { key: "6", fields: { summary: "6", status: ST.todo } }];
+  const g = groupIssues(list, "component");
+  assert.deepEqual(g.map((x) => x.label), ["API", "API, Web", "Web", "No component"]);
+  assert.deepEqual(g.map((x) => keys(x.items)), [["4"], ["3", "5"], ["1"], ["2", "6"]]);
+  assert.equal(g[3].key, "component:");
+});
+
+test("hideStatuses drops issues in unticked statuses (by id), keeps the rest", async () => {
+  const { hideStatuses } = await import("../../web/js/issues.js");
+  const list = [iss("1", { status: ST.todo }), iss("2", { status: ST.prog }), iss("3", { status: ST.todo })];
+  assert.equal(hideStatuses(list, new Set()), list);
+  assert.deepEqual(keys(hideStatuses(list, new Set(["1"]))), ["2"]);
+  assert.deepEqual(keys(hideStatuses(list, new Set(["3", "1"]))), []);
 });

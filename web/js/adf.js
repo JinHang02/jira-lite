@@ -137,7 +137,7 @@ export function renderAdf(node, opts = {}) {
         const tag = { strong: "b", em: "i", code: "code", strike: "s", underline: "u" }[m.type];
         if (tag) out = el(tag, {}, out);
         else if (m.type === "link" && safeUrl(m.attrs && m.attrs.href)) {
-          out = el("a", { href: m.attrs.href, target: "_blank", rel: "noopener" }, out);
+          out = el("a", { href: m.attrs.href, target: "_blank", rel: "noopener noreferrer" }, out);
         }
       }
       return out;
@@ -154,7 +154,7 @@ export function renderAdf(node, opts = {}) {
     case "status": return el("code", {}, a.text || "");
     case "date": return document.createTextNode(new Date(Number(a.timestamp)).toLocaleDateString());
     case "inlineCard": case "blockCard": case "embedCard":
-      return safeUrl(a.url) ? el("a", { href: a.url, target: "_blank", rel: "noopener" }, a.url) : document.createTextNode("");
+      return safeUrl(a.url) ? el("a", { href: a.url, target: "_blank", rel: "noopener noreferrer" }, a.url) : document.createTextNode("");
     case "mediaSingle": return el("div", { class: "atts single" }, kids());
     case "mediaGroup": return el("div", { class: "atts" }, kids());
     case "media": case "mediaInline": return media(a, opts);

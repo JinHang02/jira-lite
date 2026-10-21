@@ -10,15 +10,19 @@ Covered (what jira-lite calls, plus a few neighbours):
   GET  myself, priority, priority/search, project/{key}, project/{key}/statuses,
        user/assignable/search, issue/createmeta/{project}/issuetypes[/{typeId}]
   POST search/jql (also GET)  -- nextPageToken pagination, small JQL evaluator (see Jql)
-  GET  issue/{key}[?fields=..&expand=changelog], issue/{key}/changelog
+  GET  issue/{key}[?fields=..&expand=changelog], issue/{key}/changelog, issue/{key}/editmeta
   PUT  issue/{key}            -- summary, description, priority, labels, duedate, parent,
-                                 assignee, customfield_10050 (Client), fixVersions
+                                 assignee, reporter, issuetype, customfield_10050 (Client),
+                                 fixVersions, components
   POST issue                  -- validates required fields like Jira (400 errors{})
+  DELETE issue/{key}[?deleteSubtasks=true] -- refuses an issue with sub-tasks without the flag;
+                                 an epic's children lose their parent
   PUT  issue/{key}/assignee
   GET|POST issue/{key}/transitions   -- workflow graph enforced
   GET|POST issue/{key}/comment, GET|PUT|DELETE issue/{key}/comment/{id}
   POST issue/{key}/attachments  -- multipart/form-data, needs X-Atlassian-Token: no-check
-  GET  attachment/content|thumbnail/{id} -- 303 to /__mock/media/{id}?token=.. (like Media Services)
+  GET  attachment/content|thumbnail/{id} -- 303 to /__mock/media/file/{mediaId}/binary?id=..&token=..
+                                (Media Services' URL shape: the file id is what ADF media nodes name)
   GET  user/search?query=
   GET  /browse/{key}          -- a tiny HTML page, so "Open in Jira" links go somewhere
 
@@ -49,6 +53,7 @@ import struct
 import sys
 import threading
 import time
+import uuid
 import zlib
 from datetime import datetime, timedelta, timezone
 from email import policy as email_policy
@@ -965,8 +970,10 @@ class MockJira:
             ("POST", r"issue", self.create_issue),
             ("GET", r"issue/([^/]+)", self.get_issue),
             ("PUT", r"issue/([^/]+)", self.edit_issue),
+            ("DELETE", r"issue/([^/]+)", self.delete_issue),
             ("PUT", r"issue/([^/]+)/assignee", self.assign),
             ("GET", r"issue/([^/]+)/changelog", self.get_changelog),
+            ("GET", r"issue/([^/]+)/editmeta", self.get_editmeta),
             ("GET", r"issue/([^/]+)/transitions", self.get_transitions),
             ("POST", r"issue/([^/]+)/transitions", self.do_transition),
             ("GET", r"issue/([^/]+)/comment", self.get_comments),
@@ -1310,17 +1317,53 @@ class MockJira:
                      "total": len(issue["histories"]), "isLast": start + limit >= len(issue["histories"]),
                      "values": [self.history_json(h) for h in values]}
 
+    def get_editmeta(self, ref: str, q: Dict[str, str], body: Any) -> Tuple[int, Any]:
+        """The edit screen: the create screen minus project/parent; issue types of the same kind."""
+        issue = self.find_issue(ref)
+        _, _, subtask, level, _ = TYPE_BY_ID[issue["type"]]
+        # Types the PUT accepts: same kind; another hierarchy level only without parent or children.
+        tied = bool(issue["parent"]) or any(i["parent"] == issue["key"] for i in self.issues.values())
+        fields = {}  # type: Dict[str, Any]
+        for f in self.create_fields(issue["type"]):
+            fid = f["fieldId"]
+            if fid in ("project", "parent"):
+                continue
+            m = {k: copy.deepcopy(f[k]) for k in ("required", "schema", "name", "key", "operations", "allowedValues") if k in f}
+            if fid == "issuetype":  # like Jira: listed with no operations, yet settable through PUT
+                m["operations"] = []
+                m["allowedValues"] = [self.type_json(t[0]) for t in ISSUE_TYPES if t[2] == subtask and (t[3] == level or not tied)]
+            fields[fid] = m
+        return 200, {"fields": fields}
+
     def _validate_fields(self, fields: Dict[str, Any], issue_type: str, creating: bool,
                          issue: Optional[Dict[str, Any]] = None) -> Tuple[Dict[str, Any], Dict[str, str]]:
         """Checks field values like Jira does. Returns (normalised changes, errors)."""
         changes = {}  # type: Dict[str, Any]
         errors = {}  # type: Dict[str, str]
-        on_screen = {f["fieldId"] for f in self.create_fields(issue_type)}
+        # A type change in the same request: the other fields are checked against the new type.
+        check_type = issue_type
+        if not creating and isinstance(fields.get("issuetype"), dict):
+            new = TYPE_BY_ID.get(str(fields["issuetype"].get("id")))
+            if new is not None and new[2] == TYPE_BY_ID[issue_type][2]:
+                check_type = new[0]
+        on_screen = {f["fieldId"] for f in self.create_fields(check_type)}
         for fid, value in fields.items():
             if fid in ("project", "issuetype") and creating:
                 continue
-            if fid not in on_screen or (fid in ("project", "issuetype", "reporter") and not creating):
+            if fid not in on_screen or (fid == "project" and not creating):
                 errors[fid] = "Field '%s' cannot be set. It is not on the appropriate screen, or unknown." % fid
+            elif fid == "issuetype":
+                tt = TYPE_BY_ID.get(str(value.get("id"))) if isinstance(value, dict) else None
+                cur = TYPE_BY_ID[issue_type]
+                has_children = issue is not None and any(i["parent"] == issue["key"] for i in self.issues.values())
+                if tt is None:
+                    errors[fid] = "The issue type selected is invalid."
+                elif tt[2] != cur[2]:
+                    errors[fid] = "Sub-task and standard issue types can't be swapped here; use Move in Jira."
+                elif tt[3] != cur[3] and issue is not None and (issue["parent"] or has_children):
+                    errors[fid] = "Given parent work item does not belong to appropriate hierarchy."
+                else:
+                    changes["type"] = tt[0]
             elif fid == "summary":
                 if not isinstance(value, str) or not value.strip():
                     errors[fid] = "You must specify a summary of the issue."
@@ -1375,7 +1418,7 @@ class MockJira:
                         errors[fid] = "Error parsing date string: %s" % value
             elif fid == "parent":
                 if value is None:
-                    if TYPE_BY_ID[issue_type][2]:
+                    if TYPE_BY_ID[check_type][2]:
                         errors[fid] = "A sub-task must have a parent."
                     else:
                         changes[fid] = None
@@ -1388,7 +1431,7 @@ class MockJira:
                 if target is None:
                     errors[fid] = "Could not find issue by id or key."
                     continue
-                child_level = TYPE_BY_ID[issue_type][3]
+                child_level = TYPE_BY_ID[check_type][3]
                 parent_level = TYPE_BY_ID[target["type"]][3]
                 if parent_level != child_level + 1 or (issue is not None and target["key"] == issue["key"]):
                     errors[fid] = "Given parent work item does not belong to appropriate hierarchy."
@@ -1489,8 +1532,10 @@ class MockJira:
             elif fid == "priority":
                 items.append(self._item("priority", old, PRIORITY_BY_ID[old][1] if old else None,
                                         new, PRIORITY_BY_ID[new][1] if new else None))
-            elif fid == "assignee":
-                items.append(self._item("assignee", old, self.user_name(old), new, self.user_name(new)))
+            elif fid in ("assignee", "reporter"):
+                items.append(self._item(fid, old, self.user_name(old), new, self.user_name(new)))
+            elif fid == "type":
+                items.append(self._item("issuetype", old, TYPE_BY_ID[old][1], new, TYPE_BY_ID[new][1]))
             elif fid == "labels":
                 items.append(self._item("labels", None, " ".join(old), None, " ".join(new)))
             elif fid == "duedate":
@@ -1536,6 +1581,19 @@ class MockJira:
         if errors:
             raise ApiError(400, [], errors)
         self._record_change(issue, self._apply(issue, changes))
+        return 204, None
+
+    def delete_issue(self, ref: str, q: Dict[str, str], body: Any) -> Tuple[int, Any]:
+        issue = self.find_issue(ref)
+        subs = [i for i in self.issues.values() if i["parent"] == issue["key"] and TYPE_BY_ID[i["type"]][2]]
+        if subs and (q.get("deleteSubtasks") or "").lower() != "true":
+            raise ApiError(400, ["The issue has subtasks. To delete them, set the deleteSubtasks parameter to true."])
+        for i in [issue] + subs:
+            del self.issues[i["key"]]
+        for child in self.issues.values():
+            if child["parent"] == issue["key"]:
+                child["parent"] = None
+                self._record_change(child, [self._item("IssueParentAssociation", issue["id"], issue["key"], None, None)])
         return 204, None
 
     def assign(self, ref: str, q: Dict[str, str], body: Any) -> Tuple[int, Any]:
@@ -1678,9 +1736,9 @@ class MockJira:
     def attachment_redirect(self, att_id: str, kind: str) -> str:
         """Jira Cloud answers attachment/content|thumbnail/{id} with a 303 to Media Services."""
         with self.lock:
-            self._attachment(att_id)
-            return "%s/__mock/media/%s?token=%s%s" % (self.base, att_id, self.media_token(att_id),
-                                                      "&mode=thumbnail" if kind == "thumbnail" else "")
+            _, a = self._attachment(att_id)
+            return "%s/__mock/media/file/%s/binary?id=%s&token=%s%s" % (
+                self.base, a["mediaId"], att_id, self.media_token(att_id), "&mode=thumbnail" if kind == "thumbnail" else "")
 
     def media(self, att_id: str, token: str) -> Tuple[int, bytes, str, str]:
         """The file behind a media URL: (status, bytes, content type, filename). No auth header
@@ -1713,7 +1771,7 @@ class MockJira:
             now = self.now()
             for _, filename, mime, data in files:
                 att = {"id": str(self.next_attachment), "filename": filename, "mimeType": mime or "application/octet-stream",
-                       "size": len(data), "author": ME_ID, "created": now, "mediaId": "", "data": data}
+                       "size": len(data), "author": ME_ID, "created": now, "mediaId": str(uuid.uuid4()), "data": data}
                 self.next_attachment += 1
                 issue["attachments"].append(att)
                 self._history(issue, ME_ID, now, [self._item("Attachment", None, None, att["id"], filename)])
@@ -1781,14 +1839,14 @@ class Handler(BaseHTTPRequestHandler):
 
     ATTACH_UPLOAD = re.compile(r"^" + API + r"issue/([^/]+)/attachments$")
     ATTACH_FILE = re.compile(r"^" + API + r"attachment/(content|thumbnail)/([^/]+)$")
-    MEDIA = re.compile(r"^/__mock/media/([^/]+)$")
+    MEDIA = re.compile(r"^/__mock/media/file/[^/]+/binary$")
 
     def _files(self, path: str, query: str, raw: bytes) -> bool:
         """Binary and multipart routes the JSON dispatch can't express. True if handled.
 
         POST issue/{key}/attachments (multipart, needs X-Atlassian-Token: no-check),
         GET attachment/content|thumbnail/{id} (303 to a media URL, like Jira Cloud),
-        GET /__mock/media/{id}?token= (the bytes; no Authorization, token-checked),
+        GET /__mock/media/file/{mediaId}/binary?id={id}&token= (the bytes; no Authorization, token-checked),
         GET user/search?query=."""
         up = self.ATTACH_UPLOAD.match(path) if self.command == "POST" else None
         dl = self.ATTACH_FILE.match(path) if self.command == "GET" else None
@@ -1799,7 +1857,7 @@ class Handler(BaseHTTPRequestHandler):
         jira = self.server.jira
         if media:
             q = parse_qs(query)
-            status, data, ctype, name = jira.media(unquote(media.group(1)), (q.get("token") or [""])[-1])
+            status, data, ctype, name = jira.media((q.get("id") or [""])[-1], (q.get("token") or [""])[-1])
             self.server.record(self.command, self.path, None, status, self.headers.get("Authorization"))
             self.send_response(status)
             self.send_header("Content-Type", ctype)

@@ -78,9 +78,12 @@ export function assigneeMenu(key, anchor) {
   }, { search: true });
 }
 
-/** PUTs `fields` on the issue; on failure the open detail panel is reloaded to drop the optimistic edit. */
-export function updateFields(key, fields, msg) {
-  return write(() => jira.updateIssue(key, fields), msg, (m) => "Update failed: " + m, () => {
+/**
+ * PUTs `fields` on the issue; on failure the open detail panel is reloaded to drop the optimistic
+ * edit, or `onFail` runs instead (e.g. the description editor keeps the typed text).
+ */
+export function updateFields(key, fields, msg, onFail) {
+  return write(() => jira.updateIssue(key, fields), msg, (m) => "Update failed: " + m, onFail || (() => {
     if (state.current === key) actions.loadDetail();
-  });
+  }));
 }

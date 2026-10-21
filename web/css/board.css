@@ -1,6 +1,6 @@
 /* ---- board ---- */
 #board { flex: 1; min-width: 0; display: flex; gap: 8px; padding: 12px; overflow-x: auto; overflow-y: hidden; }
-#board[hidden], #list[hidden] { display: none; }
+#board[hidden], #list[hidden] { display: none !important; }  /* never let a view rule (e.g. .swim) show the other view */
 .col { width: 248px; flex: none; display: flex; flex-direction: column; max-height: 100%; border-radius: 10px; background: var(--bg-group); }
 .col.drop { outline: 2px dashed var(--accent); outline-offset: -2px; }
 .colh { display: flex; align-items: center; gap: 8px; height: 40px; flex: none; padding: 0 12px; font-weight: 500; color: var(--title); }
@@ -17,14 +17,24 @@
 .tcard .bot .labels { flex-wrap: wrap; }
 .tcard .pill { max-width: 112px; }
 
-/* Folded empty columns and "Show completed": quiet chips after the last column. */
-.lane { flex: none; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding-top: 6px; }
-.lane-chip { height: var(--ctrl-h); padding: 0 10px; border: 1px dashed var(--border); border-radius: 8px; color: var(--muted); font-weight: 500; white-space: nowrap;
-  transition: background var(--fast) var(--ease), color var(--fast) var(--ease), border-color var(--fast) var(--ease); }
-.lane-chip:hover { background: var(--bg-hover); color: var(--text); border-style: solid; }
 
 /* Multi-select: the checkbox covers the priority icon on hover / while selecting. */
 .tcard { position: relative; }
 .tcard .selbox { left: auto; right: 10px; top: 9px; margin-top: 0; }
 .tcard:hover .top .picon, .selecting .tcard .top .picon { visibility: hidden; }
 .tcard.sel { border-color: color-mix(in srgb, var(--accent) 70%, var(--border)); background: color-mix(in srgb, var(--accent) 7%, var(--elevated)); }
+
+/* ---- swimlanes (Display › Grouping other than status) ---- */
+#board.swim:not([hidden]) { display: block; overflow: auto; padding: 0 12px 24px; }  /* :not([hidden]): List view must still hide it */
+.swimhead { position: sticky; top: 0; z-index: 2; display: flex; gap: 8px; width: max-content; min-width: 100%; padding: 12px 0 4px; background: var(--bg); }
+.swimhead > .colh { width: 248px; flex: none; height: 36px; border-radius: 10px; background: var(--bg-group); }
+.swimlane { width: max-content; min-width: 100%; margin-top: 8px; }
+.swimh { position: sticky; left: 0; display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px 0 4px; border-radius: 7px;
+  color: var(--title); font-weight: 500; cursor: pointer; user-select: none; }
+.swimh:hover { background: var(--bg-hover); }
+.swimh:focus-visible { outline-offset: -2px; }
+.swimh .av { width: 16px; height: 16px; font-size: 7.5px; }
+.swimh.closed .chev { transform: rotate(-90deg); }
+.swimrow { display: flex; gap: 8px; }
+.swimcell { width: 248px; flex: none; display: flex; flex-direction: column; gap: 6px; min-height: 52px; padding: 6px; border-radius: 10px; background: var(--bg-group); }
+.swimcell.drop { outline: 2px dashed var(--accent); outline-offset: -2px; }

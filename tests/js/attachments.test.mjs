@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { fileUrl, thumbUrl, formatSize, fileKind, isImage, findAttachment, sortAttachments, uploadBatch, MAX_BODY } from "../../web/js/attachments.js";
+import { fileUrl, thumbUrl, formatSize, fileKind, isImage, findAttachment, sortAttachments, uploadBatch, MAX_BODY, pastedName, imageNode } from "../../web/js/attachments.js";
+import { toMarkdown, fromMarkdown, keepBlock } from "../../web/js/markdown.js";
 
 test("file URLs go through the same-origin /files/ routes", () => {
   assert.equal(fileUrl("25639"), "/files/content/25639");
@@ -67,4 +68,24 @@ test("uploadBatch keeps the request under the server's body limit", () => {
   assert.deepEqual(tooBig.map((x) => x.name), ["b", "d"]);
   assert.equal(MAX_BODY, 25 * MB);
   assert.deepEqual(uploadBatch([]), { ok: [], tooBig: [] });
+});
+
+test("pastedName: clipboard images get a unique screenshot name, real names are kept", () => {
+  const d = new Date(2026, 9, 21, 9, 5, 7);
+  assert.equal(pastedName("image.png", "image/png", d), "screenshot-20261021-090507.png");
+  assert.equal(pastedName("", "image/jpeg", d, 2), "screenshot-20261021-090507-2.jpg");
+  assert.equal(pastedName("Image.PNG", "image/png", d), "screenshot-20261021-090507.png");
+  assert.equal(pastedName("login bug.png", "image/png", d), "login bug.png");
+});
+
+test("imageNode + keepBlock: a pasted image round-trips through the editor text", () => {
+  const node = imageNode("cebf256e-58b9-4541-82f2-13ab1ef4a0d2", "shot.png", { width: 800, height: 600 });
+  assert.deepEqual(node.content[0].attrs, { type: "file", id: "cebf256e-58b9-4541-82f2-13ab1ef4a0d2", collection: "", alt: "shot.png", width: 800, height: 600 });
+  assert.equal(imageNode("x", "a.png", null).content[0].attrs.width, undefined);
+  const { text, kept } = toMarkdown({ type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Steps" }] }] });
+  const line = keepBlock(kept, node);
+  assert.equal(line, "⟦1 · attachment: shot.png⟧");
+  const out = fromMarkdown(text + "\n" + line + "\nafter", { kept }).content;
+  assert.deepEqual(out.map((n) => n.type), ["paragraph", "mediaSingle", "paragraph"]);
+  assert.deepEqual(out[1], node);
 });

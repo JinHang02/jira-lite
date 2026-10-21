@@ -71,6 +71,8 @@ class Handler(BaseHTTPRequestHandler):
                         else auth.callback(query, self.headers.get("Cookie")))
         elif match_prefix(path) is not None:
             self._proxy()
+        elif files.MEDIA_RE.match(path):
+            self._media_id(path)
         elif path.startswith(files.FILE_PREFIX):
             self._file(path)
         else:
@@ -157,6 +159,23 @@ class Handler(BaseHTTPRequestHandler):
         headers = files.file_headers(result.status, result.headers)
         self._send(result.status, result.body, result.content_type, headers)
 
+    def _media_id(self, path: str) -> None:
+        """The Media Services id of an attachment (for embedding it in a description)."""
+        if not self._has_proxy_header():
+            return
+        try:
+            result = self._forward("GET", files.media_path(path) or "", None, None)
+        except LoginRequired:
+            return self._login_required()
+        if result.status >= 400:
+            return self._relay(result)  # Jira's error (404, 403...) as is
+        if not 300 <= result.status < 400:  # bytes or an empty answer: never relayed from this JSON route
+            return self._send_json(502, {"errorMessages": ["Jira answered without a redirect to the media file"]})
+        found = files.media_id(dict(result.headers).get("Location"))
+        if found is None:
+            return self._send_json(502, {"errorMessages": ["Jira didn't say which media file the attachment is"]})
+        self._send_json(200, {"id": found})
+
     def _auth_me(self) -> None:
         if self.server.auth is None:
             return self._send_json(200, {"auth": "token"})
@@ -220,15 +239,23 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
+        self._no_framing()
         for name, value in headers:
             self.send_header(name, value)
         self.end_headers()
         self.wfile.write(data)
 
+    def _no_framing(self) -> None:
+        # No other site may embed the app in a frame: in token mode the server holds the credentials,
+        # so a framed page could be clicked into editing or deleting issues (clickjacking).
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Content-Security-Policy", "frame-ancestors 'none'")
+
     def _send_empty(self, code: int, headers: Iterable[Tuple[str, str]] = ()) -> None:
         """A bodiless response (204 must not carry Content-Length)."""
         self.send_response(code)
         self.send_header("Cache-Control", "no-store")
+        self._no_framing()
         for name, value in headers:
             self.send_header(name, value)
         self.end_headers()

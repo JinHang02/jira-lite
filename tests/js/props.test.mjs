@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { fieldText, localDay, dueState, parseLabels, requiredCustomFields, parentAllowed, epicTypeName, epicJql, filterEpics } from "../../web/js/props.js";
+import { fieldText, localDay, dueState, parseLabels, requiredCustomFields, parentAllowed, epicTypeName, epicJql, filterEpics, pickKind, pickChoices, pickValue, canSet, ancestry } from "../../web/js/props.js";
 
 test("fieldText: options, versions, users, arrays, scalars", () => {
   assert.equal(fieldText(null), "");
@@ -76,4 +76,41 @@ test("filterEpics by key or summary", () => {
   assert.deepEqual(filterEpics(epics, "ba-1").map((e) => e.key), ["BA-1"]);
   assert.equal(filterEpics(epics, "").length, 2);
   assert.deepEqual(filterEpics(null, "x"), []);
+});
+
+test("pickKind: pick lists from editmeta schemas", () => {
+  const meta = (schema, ops = ["set"]) => ({ schema, operations: ops, allowedValues: [] });
+  assert.equal(pickKind(meta({ type: "option" })), "one");
+  assert.equal(pickKind(meta({ type: "array", items: "version" })), "many");
+  assert.equal(pickKind(meta({ type: "array", items: "component" })), "many");
+  assert.equal(pickKind(meta({ type: "array", items: "option" })), "many");
+  assert.equal(pickKind(meta({ type: "array", items: "string" })), null);
+  assert.equal(pickKind(meta({ type: "option" }, ["add"])), null);
+  assert.equal(pickKind({ schema: { type: "option" }, operations: ["set"] }), null);
+  assert.equal(pickKind(undefined), null);
+});
+
+test("pickChoices hides archived/disabled values unless set; pickValue shapes the PUT", () => {
+  const meta = { allowedValues: [{ id: "1", name: "a" }, { id: "2", name: "old", archived: true }, { id: 3, value: "x", disabled: true }] };
+  assert.deepEqual(pickChoices(meta, []).map((v) => v.id), ["1"]);
+  assert.deepEqual(pickChoices(meta, [{ id: "2" }]).map((v) => v.id), ["1", "2"]);
+  assert.deepEqual(pickChoices(meta, { id: "3" }).map((v) => v.id), ["1", 3]);
+  assert.deepEqual(pickValue("many", [{ id: 1, name: "a" }, { id: "2" }]), [{ id: "1" }, { id: "2" }]);
+  assert.deepEqual(pickValue("many", []), []);
+  assert.deepEqual(pickValue("one", { id: 5, value: "x" }), { id: "5" });
+  assert.equal(pickValue("one", null), null);
+  assert.equal(canSet({ operations: ["set"] }), true);
+  assert.equal(canSet({ operations: [] }), false);
+  assert.equal(canSet(undefined), false);
+});
+
+test("ancestry: parent chain top first, via the lookup; stops on cycles", () => {
+  const ref = (key, parent) => ({ key, fields: { summary: key, parent: parent ? { key: parent } : undefined } });
+  const known = { "A-2": ref("A-2", "A-1"), "A-1": ref("A-1") };
+  const lookup = (k) => known[k] || null;
+  assert.deepEqual(ancestry(ref("A-3", "A-2"), lookup).map((a) => a.key), ["A-1", "A-2"]);
+  assert.deepEqual(ancestry(ref("A-3", "A-9"), lookup).map((a) => a.key), ["A-9"]);  // parent's parent unknown
+  assert.deepEqual(ancestry(ref("A-1"), lookup), []);
+  const loop = { "B-1": ref("B-1", "B-2"), "B-2": ref("B-2", "B-1") };
+  assert.deepEqual(ancestry(ref("B-1", "B-2"), (k) => loop[k]).map((a) => a.key), ["B-2"]);
 });

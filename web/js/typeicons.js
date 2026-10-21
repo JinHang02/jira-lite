@@ -1,6 +1,6 @@
 // Jira-style issue type icons (14px rounded squares), drawn locally: Jira's own icon URLs need
 // the user's Jira session, which the browser doesn't have.
-import { icon } from "./dom.js";
+import { el, icon } from "./dom.js";
 
 const GLYPH = 'fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"';
 const TYPES = {
@@ -29,4 +29,19 @@ export function typeKind(t) {
 export function typeIcon(t) {
   const k = typeKind(t);
   return icon(14, '<rect x=".5" y=".5" width="13" height="13" rx="3" fill="currentColor"/>' + TYPES[k], "ticon ti-" + k);
+}
+
+/** The type icon with the type's name as tooltip (list rows, board cards). */
+export function typeBadge(t) {
+  return t ? el("span", { class: "tbadge", title: t.name }, typeIcon(t)) : null;
+}
+
+/** "↳ KEY" button that opens the parent; null without a parent or when the view is that epic. */
+export function parentHint(f, epicFilter, open) {
+  if (!f.parent || f.parent.key === epicFilter) return null;
+  const summary = (f.parent.fields || {}).summary || "";
+  const b = el("button", { class: "phint", type: "button", title: "Parent: " + f.parent.key + (summary ? " · " + summary : "") },
+    "↳ ", el("span", { class: "phkey" }, f.parent.key), summary ? el("span", { class: "phsum" }, summary) : null);
+  b.addEventListener("click", (e) => { e.stopPropagation(); open(f.parent.key); });
+  return b;
 }

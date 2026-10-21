@@ -1,9 +1,9 @@
 // Pure classification and ordering of Jira statuses and priorities. No DOM access.
 
-/** Order of status kinds for list groups: work in progress first, finished last. */
+/** The status kinds (statusKind's vocabulary), work in progress first. */
 export const KIND_ORDER = ["started", "review", "blocked", "todo", "backlog", "done", "canceled"];
 
-/** Order of status kinds for board columns: left-to-right workflow. */
+/** Workflow order of status kinds: board columns, list groups and Display › Statuses. */
 export const BOARD_ORDER = ["backlog", "todo", "started", "blocked", "review", "done", "canceled"];
 
 /** Maps a Jira status ({name, statusCategory}) onto one of the KIND_ORDER kinds. */
@@ -35,7 +35,7 @@ export function uniqueStatuses(perIssueType) {
   return [...byId.values()];
 }
 
-/** Groups issues by status in list order (KIND_ORDER, then name): [{status, items}]. */
+/** Groups issues by status in workflow order (BOARD_ORDER, then name), like the board: [{status, items}]. */
 export function groupByStatus(issues) {
   const groups = new Map();
   for (const i of issues) {
@@ -44,7 +44,7 @@ export function groupByStatus(issues) {
     if (!groups.has(id)) groups.set(id, { status: s, items: [] });
     groups.get(id).items.push(i);
   }
-  return [...groups.values()].sort((a, b) => compareStatuses(a.status, b.status, KIND_ORDER));
+  return [...groups.values()].sort((a, b) => compareStatuses(a.status, b.status, BOARD_ORDER));
 }
 
 /**
@@ -64,6 +64,14 @@ export function boardColumns(statuses, issues, { showDone = true } = {}) {
   return [...cols.values()]
     .filter((c) => showDone || c.items.length || !["done", "canceled"].includes(statusKind(c.status)))
     .sort((a, b) => compareStatuses(a.status, b.status, BOARD_ORDER));
+}
+
+/**
+ * Board swimlanes: each group (issues.groupIssues) with its issues split into `cols` (the
+ * board's columns, same order): [{...group, cells: [{status, items}]}].
+ */
+export function boardLanes(cols, groups) {
+  return groups.map((g) => ({ ...g, cells: cols.map((c) => ({ status: c.status, items: g.items.filter((i) => String(i.fields.status.id) === String(c.status.id)) })) }));
 }
 
 /** Priority levels, most to least urgent. */

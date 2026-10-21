@@ -4,7 +4,7 @@ import * as jira from "./api.js";
 import { state, store } from "./state.js";
 import { $, el, icon, ICONS, toast, typingIn } from "./dom.js";
 import { buildJql, deltaJql, matchesView } from "./jql.js";
-import { filterIssues, sortIssues } from "./issues.js";
+import { filterIssues, sortIssues, hideStatuses } from "./issues.js";
 import { syncPlan, deltaMinutes, mergeDelta, sinceLabel, REFRESH_MS } from "./sync.js";
 import { renderList } from "./list.js";
 import { renderBoard } from "./board.js";
@@ -91,8 +91,9 @@ export async function syncList() {
 
 /** Re-renders the current view from state.issues, the filter and the Display options. */
 export function renderMain() {
-  const list = filterIssues(state.issues, state.filter);
-  const n = state.issues.length;
+  const shown = hideStatuses(state.issues, state.hiddenStatuses);
+  const list = filterIssues(shown, state.filter);
+  const n = shown.length;
   const filtering = !!state.filter.trim();
   $("#count").textContent = !state.loaded ? "" : filtering ? list.length + " / " + n : n ? String(n) : "";
   $(".qwrap").classList.toggle("active", filtering);
@@ -135,15 +136,19 @@ function blank(ico, title, sub, buttons) {
 /** No issues: either nothing matches the filter, or the view itself is empty. */
 function emptyState(filtering) {
   if (filtering) {
-    return blank(SEARCH_ICON, "No issues match “" + state.filter.trim() + "”", "Try another word, a key like BA-12, or a name.",
+    return blank(SEARCH_ICON, "No issues match “" + state.filter.trim() + "”", "Try another word, a ticket key, or a name.",
       [el("button", { class: "btn", onclick: () => { clearFilter(); $("#q").focus(); } }, "Clear filter")]);
+  }
+  if (state.issues.length) {  // everything loaded is in an unticked status
+    return blank(INBOX_ICON, "All " + state.issues.length + " issues are in hidden statuses", "Tick them again in Display › Statuses.",
+      [el("button", { class: "btn", onclick: () => actions.showAllStatuses() }, "Show all statuses")]);
   }
   const person = state.people.find((u) => u.accountId === state.who);
   const open = state.showDone ? "" : "open ";
   const epic = state.epic && (state.epicInfo.get(state.epic) || {}).summary;
   const title = state.epic ? "No " + open + "issues in " + (epic || state.epic)
     : state.who === "mine" ? "No " + open + "issues assigned to you"
-    : state.who === "all" ? "No " + open + "issues in " + state.cfg.project
+    : state.who === "all" ? "No " + open + "issues"
       : "No " + open + "issues assigned to " + (person ? person.displayName : "this person");
   const buttons = [el("button", { class: "btn", onclick: () => actions.openCreate(null) }, icon(14, ICONS.plus, ""), "New issue")];
   if (!state.showDone) buttons.push(el("button", { class: "btn", onclick: () => actions.toggleDone() }, "Show completed"));
@@ -165,9 +170,11 @@ export function setView(view) {
 }
 
 /** Display › Show completed: reloads with or without Done issues. */
-export function toggleDone() {
+export function toggleDone(keepTicks = false) {
   state.showDone = !state.showDone;
   store("showDone", state.showDone ? "1" : "0");
+  // Turning completed issues on from anywhere but Display › Statuses ticks every completed status.
+  if (state.showDone && !keepTicks) untickDone(false);
   return loadList().then(() => {
     // Done sorts last, usually off-screen: jump to it so the toggle visibly does something.
     if (!state.showDone) return;
@@ -180,6 +187,15 @@ export function toggleDone() {
     const list = $("#list");
     if (done) list.scrollBy({ top: done.getBoundingClientRect().top - list.getBoundingClientRect().top, behavior: "smooth" });
   });
+}
+
+/** Clears the completed statuses (Done/Canceled-like) from Display › Statuses' hidden set. */
+export function untickDone(render = true) {
+  let changed = false;
+  for (const s of state.statuses) if (((s.statusCategory || {}).key === "done") && state.hiddenStatuses.delete(String(s.id))) changed = true;
+  if (!changed) return;
+  store("hiddenStatuses", JSON.stringify([...state.hiddenStatuses]));
+  if (render) renderMain();
 }
 
 /** True unless a write is in flight, a menu is open, or the app is signed out. */

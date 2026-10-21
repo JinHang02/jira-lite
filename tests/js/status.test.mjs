@@ -62,11 +62,11 @@ test("uniqueStatuses de-duplicates the per-issue-type listing", () => {
   assert.deepEqual(uniqueStatuses(null), []);
 });
 
-test("groupByStatus orders list groups by KIND_ORDER then name", () => {
+test("groupByStatus orders list groups in workflow order (like the board), then name", () => {
   const groups = groupByStatus([issue("A-1", DONE), issue("A-2", TESTING), issue("A-3", PROGRESS), issue("A-4", REVIEW),
     issue("A-5", BACKLOG), issue("A-6", PROGRESS), issue("A-7", TODO)]);
-  assert.deepEqual(groups.map((g) => g.status.name), ["In Progress", "In Review", "Testing", "To Do", "Backlog", "Done"]);
-  assert.deepEqual(groups[0].items.map((i) => i.key), ["A-3", "A-6"]);
+  assert.deepEqual(groups.map((g) => g.status.name), ["Backlog", "To Do", "In Progress", "In Review", "Testing", "Done"]);
+  assert.deepEqual(groups[2].items.map((i) => i.key), ["A-3", "A-6"]);
 });
 
 test("boardColumns: one column per project status in BOARD_ORDER", () => {
@@ -110,4 +110,15 @@ test("prioKind maps names to five levels plus none", () => {
   assert.equal(k("Something else"), "none");
   assert.equal(prioKind(null), "none");
   assert.equal(prioKind(undefined), "none");
+});
+
+test("boardLanes: each group split into the board's columns, in column order", async () => {
+  const { boardLanes } = await import("../../web/js/status.js");
+  const todo = { id: "1", name: "To Do" }, prog = { id: 3, name: "In Progress" };
+  const i = (key, status) => ({ key, fields: { status } });
+  const cols = [{ status: todo, items: [] }, { status: prog, items: [] }];
+  const lanes = boardLanes(cols, [{ key: "a", label: "A", items: [i("1", prog), i("2", todo), i("3", { id: "3" })] }, { key: "b", label: "B", items: [] }]);
+  assert.deepEqual(lanes.map((l) => l.cells.map((c) => c.items.map((x) => x.key))), [[["2"], ["1", "3"]], [[], []]]);
+  assert.equal(lanes[0].label, "A");
+  assert.equal(lanes[0].cells[1].status, prog);
 });

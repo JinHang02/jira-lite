@@ -22,6 +22,7 @@ from jira_lite.config import Settings
 SLOW_SECONDS = 2.0  # how long the fake's /slow endpoint stalls
 PROXY_TIMEOUT = 0.5  # proxy timeout used by the app under test
 MEDIA_PATH = "/media/file/"  # where the fake redirects attachment downloads
+MEDIA_UUID = "cebf256e-58b9-4541-82f2-13ab1ef4a0d2"  # attachment 10601's media file (Jira's real URL shape)
 PNG_BYTES = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
 
 
@@ -50,7 +51,12 @@ class _FakeJiraHandler(BaseHTTPRequestHandler):
         if path.endswith("/bad-request"):
             return self._reply(400, b'{"errors":{"summary":"required"}}')
         if "/attachment/content/" in path:  # Jira Cloud: 303 to a short-lived media URL
-            return self._redirect(MEDIA_PATH + path.rsplit("/", 1)[1] + "?token=short-lived")
+            att = path.rsplit("/", 1)[1]
+            if att == "10601":
+                return self._redirect(MEDIA_PATH + MEDIA_UUID + "/binary?token=short-lived&name=a.png")
+            if att == "10602":  # some answer with the bytes directly
+                return self._reply(200, b"<html>not json</html>", "text/html")
+            return self._redirect(MEDIA_PATH + att + "?token=short-lived")
         if "/attachment/thumbnail/" in path:  # some answers carry the bytes directly
             return self._reply(200, PNG_BYTES, "image/png", (("Content-Disposition", 'inline; filename="a.png"'),))
         if path.startswith(MEDIA_PATH):  # must never be reached through the proxy

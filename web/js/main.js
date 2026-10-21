@@ -5,12 +5,14 @@ import { state, loadPrefs, unstash } from "./state.js";
 import { $, toast } from "./dom.js";
 import { wire } from "./actions.js";
 import { renderSide, updateTitle, setWho, setEpic, applySavedView, saveView, loadEpics, bindSidebar } from "./sidebar.js";
-import { loadList, syncList, renderMain, setView, toggleDone, refresh, autoRefresh, bindHeader } from "./views.js";
+import { loadList, syncList, renderMain, setView, toggleDone, untickDone, refresh, autoRefresh, bindHeader } from "./views.js";
 import { loadStatuses } from "./board.js";
 import { openIssue, closeDetail, loadDetail } from "./detail.js";
 import { openCreate } from "./create.js";
 import { loadPriorities } from "./meta.js";
 import { installKeyboard } from "./keyboard.js";
+import { bindResize } from "./resize.js";
+import { showAllStatuses } from "./display.js";
 import { oauthMode, showSignIn, requireLogin } from "./auth.js";
 import { REFRESH_MS } from "./sync.js";
 
@@ -34,6 +36,7 @@ function loadMe() {
 function startApp() {
   loadPrefs();
   bindHeader();
+  bindResize();
   bindSidebar();
   installKeyboard();
   // Every minute, a delta sync (see views.syncList); a full reload every 10 minutes or on r.
@@ -54,26 +57,33 @@ function startApp() {
   loadPriorities().then((p) => { state.priorities = p; }).catch(() => {});
   // After a sign-in round trip, reopen the issue that was open when the session ended.
   const back = unstash("returnTo");
-  const key = location.hash.length > 1 ? decodeURIComponent(location.hash.slice(1)) : back;
+  const key = hashKey() || back;
   if (key) openIssue(key);
   // A pasted link or Back/Forward changes the hash while the app is open: follow it.
   // (openIssue/closeDetail use replaceState, which doesn't fire hashchange, so this can't loop.)
   window.addEventListener("hashchange", () => {
-    const k = location.hash.length > 1 ? decodeURIComponent(location.hash.slice(1)) : "";
+    const k = hashKey();
     if (k && k !== state.current) openIssue(k);
     else if (!k && state.current) closeDetail();
   });
 }
 
+/** The issue key in the URL hash ("#BA-12"), or "" when the hash isn't one. */
+function hashKey() {
+  let h = "";
+  try { h = decodeURIComponent(location.hash.slice(1)); } catch (e) { return ""; }
+  return /^[A-Z][A-Z0-9_]*-\d+$/i.test(h) ? h.toUpperCase() : "";
+}
+
 async function init() {
   wire({
     openIssue, closeDetail, loadDetail, loadList, renderMain, openCreate, setWho, setView, toggleDone, refresh, sync: syncList,
-    setEpic, applySavedView, saveView, loadEpics,
+    setEpic, applySavedView, saveView, loadEpics, showAllStatuses, untickDone,
   });
   jira.setLoginHandler(requireLogin);
   try { state.cfg = { ...state.cfg, ...(await jira.getConfig()) }; } catch (e) { /* keep defaults */ }
   if (state.cfg.auth !== "oauth") state.cfg.auth = "token";
-  document.title = "jira-lite · " + state.cfg.project;
+  document.title = "jira-lite";
   if (oauthMode()) {
     let me;
     try { me = await jira.getAuthMe(); } catch (e) { me = undefined; /* unknown: let the Jira calls decide */ }

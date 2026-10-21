@@ -125,7 +125,7 @@ class DetailE2E(unittest.TestCase):
         for kind in ("thumbnail", "content"):
             status, headers, _ = self.file("/files/%s/%s" % (kind, att["id"]))
             self.assertEqual(status, 303, kind)
-            self.assertIn("/__mock/media/%s?token=" % att["id"], headers["location"])
+            self.assertIn("/__mock/media/file/%s/binary?id=%s&token=" % (media["attrs"]["id"], att["id"]), headers["location"])
             self.assertEqual(headers["referrer-policy"], "no-referrer")
             status, headers, data = self.follow(headers["location"])
             self.assertEqual((status, headers["content-type"], data[:8]), (200, "image/png", b"\x89PNG\r\n\x1a\n"))
@@ -148,6 +148,26 @@ class DetailE2E(unittest.TestCase):
         status, headers, _ = self.file("/files/content/%s" % added[0]["id"])
         self.assertEqual(status, 303)
         self.assertEqual(self.follow(headers["location"])[2], PNG)
+
+    def test_uploaded_image_embedded_in_the_description(self) -> None:
+        """What the description editor does with a pasted screenshot: upload, ask for its media
+        id, then PUT a mediaSingle naming it (and its file name, which the frontend matches on)."""
+        ctype, body = multipart([("screenshot-1.png", "image/png", PNG)])
+        status, _, raw = self.app("POST", "/jira/issue/DEMO-5/attachments", headers={"Content-Type": ctype}, raw=body)
+        self.assertEqual(status, 200, raw)
+        att = json.loads(raw)[0]
+        status, _, raw = self.app("GET", "/files/media/%s" % att["id"])
+        self.assertEqual(status, 200, raw)
+        media_id = json.loads(raw)["id"]
+        self.assertRegex(media_id, r"^[0-9a-f-]{36}$")
+        status, headers, _ = self.file("/files/content/%s" % att["id"])
+        self.assertIn("/file/%s/binary" % media_id, headers["location"])
+        image = {"type": "mediaSingle", "attrs": {"layout": "center"}, "content": [{"type": "media", "attrs": {
+            "type": "file", "id": media_id, "collection": "", "alt": att["filename"], "width": 3, "height": 2}}]}
+        doc = {"type": "doc", "version": 1, "content": [{"type": "paragraph", "content": [{"type": "text", "text": "See:"}]}, image]}
+        self.jira("PUT", "issue/DEMO-5", {"fields": {"description": doc}}, expect=204)
+        self.assertEqual(self.jira("GET", "issue/DEMO-5?fields=description")["fields"]["description"]["content"][1], image)
+        self.assertEqual(self.app("GET", "/files/media/%s" % att["id"], headers={"X-Jira-Lite": "0"})[0], 403)
 
     def test_upload_needs_the_proxy_header_and_xsrf_token_upstream(self) -> None:
         ctype, body = multipart([("a.txt", "text/plain", b"x")])

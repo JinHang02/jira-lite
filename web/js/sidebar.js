@@ -5,7 +5,7 @@
 import * as jira from "./api.js";
 import { state, store } from "./state.js";
 import { $, el, icon, ICONS, toast } from "./dom.js";
-import { avatar, NAV_ICONS } from "./icons.js";
+import { avatar, NAV_ICONS, logo } from "./icons.js";
 import { visiblePeople, pushRecent, PEOPLE_LIMIT } from "./people.js";
 import { epicsJql, epicChildrenJql, chunk, epicProgress, epicEntries, visibleEpics, ringDash, EPIC_LIMIT } from "./epics.js";
 import { addView, renameView, deleteView, applyView, serializeViews } from "./savedviews.js";
@@ -50,11 +50,28 @@ export function titleLabel() {
 
 /** Sets the header title and shows the "Open epic" link while an epic is shown. */
 export function updateTitle() {
-  $("#title").textContent = titleLabel();
+  const t = $("#title");
+  const person = state.people.find((u) => u.accountId === state.who);
+  const glyph = state.epic || activeSaved() ? null
+    : state.who === "mine" || state.who === "all" ? icon(16, NAV_ICONS[state.who], "ticon-nav") : avatar(person || { displayName: whoLabel(), accountId: state.who });
+  t.replaceChildren(...[glyph, el("span", { class: "tlabel" }, titleLabel()), icon(12, ICONS.chev, "tchev")].filter(Boolean));
   const link = $("#epicLink");
   if (!link) return;
   link.hidden = !state.epic;
   link.title = state.epic ? "Open " + state.epic + " · " + epicName(state.epic) : "";
+}
+
+/** The title's menu: My issues, All issues and everyone (with avatars, searchable); picking one shows their issues. */
+export function whoMenu(anchor) {
+  const { me } = state;
+  const people = [...state.people].sort((a, b) => a.displayName.localeCompare(b.displayName));
+  const cur = state.epic || activeSaved() ? null : state.who;
+  const items = [
+    { id: "mine", label: "My issues", icon: icon(16, NAV_ICONS.mine, ""), current: cur === "mine" },
+    { id: "all", label: "All issues", icon: icon(16, NAV_ICONS.all, ""), current: cur === "all" },
+    ...people.map((u) => ({ id: u.accountId, label: u.displayName + (me && u.accountId === me.accountId ? " (me)" : ""), icon: avatar(u), current: cur === u.accountId })),
+  ];
+  openMenu(anchor, "Show issues of", items, (it) => { if (!it.current) setWho(it.id); }, { search: true });
 }
 
 /** Fetches an epic's summary for the title when the sidebar doesn't list it (closed, or > 50). */
@@ -124,6 +141,7 @@ export function applySavedView(id) {
   store("who", s.who);
   store("epic", s.epic || "");
   store("showDone", s.showDone ? "1" : "0");
+  if (s.showDone) actions.untickDone(false);
   store("grouping", s.grouping);
   store("ordering", s.ordering);
   $("#q").value = s.filter;
@@ -203,6 +221,7 @@ export async function loadEpics() {
     state.epics = epicEntries(epics, epicProgress(keys, kids));
     for (const e of state.epics) state.epicInfo.set(e.key, { key: e.key, summary: e.summary });
     state.epicsState = "ok";
+    if (state.loaded) actions.renderMain();  // epic rows' "2/5" badges count these children
   } catch (e) {
     if (seq !== epicsSeq) return;
     state.epicsState = state.epics.length ? "ok" : "error";
@@ -239,7 +258,7 @@ const sectionHead = (label, open, onToggle) => el("button", { class: "side-h" + 
   el("span", {}, label), icon(16, ICONS.chev, "chev"));
 
 export function renderSide() {
-  const { cfg, people } = state;
+  const { people } = state;
   const scroll = el("div", { class: "side-scroll" },
     nav("mine", "My issues", icon(16, NAV_ICONS.mine, "")),
     nav("all", "All issues", icon(16, NAV_ICONS.all, "")),
@@ -251,7 +270,7 @@ export function renderSide() {
   const old = $("#side .side-scroll");
   const top = old ? old.scrollTop : 0;
   $("#side").replaceChildren(
-    el("div", { class: "ws" }, el("span", { class: "logo" }, cfg.project.slice(0, 2)), el("span", {}, "Jira · " + cfg.project)),
+    el("div", { class: "ws" }, logo(20), el("span", {}, "jira-lite")),
     scroll,
     el("div", { class: "side-foot" + (me ? " with-me" : "") }, me, help));
   scroll.scrollTop = top;
@@ -426,6 +445,7 @@ export function closeDrawer() {
 
 /** Binds the header's sidebar toggle, the drawer's backdrop and the "Open epic" link. */
 export function bindSidebar() {
+  $("#title").addEventListener("click", (e) => whoMenu(e.currentTarget));
   $("#sideBtn").addEventListener("click", toggleSidebar);
   $("#scrim").addEventListener("click", closeDrawer);
   $("#epicLink").addEventListener("click", () => { if (state.epic) actions.openIssue(state.epic); });

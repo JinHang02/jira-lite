@@ -399,6 +399,64 @@ class WriteTest(E2ETestCase):
         err = self.jira("PUT", "issue/DEMO-5", {"fields": {"description": "plain string"}}, expect=400)
         self.assertIn("Atlassian Document", err["errors"]["description"])
 
+    def test_editmeta_and_pick_list_edits(self) -> None:
+        meta = self.jira("GET", "issue/DEMO-5/editmeta")["fields"]
+        # DEMO-5 is under an epic: only same-level types (Epic would break the hierarchy, like the PUT says)
+        self.assertEqual([t["name"] for t in meta["issuetype"]["allowedValues"]], ["Task", "Bug", "Story"])
+        self.assertEqual(meta["issuetype"]["operations"], [])
+        self.assertEqual(meta["fixVersions"]["schema"], {"type": "array", "items": "version", "system": "fixVersions"})
+        self.assertEqual(meta[mj.CLIENT_FIELD]["schema"]["type"], "option")
+        self.assertIn("set", meta["reporter"]["operations"])
+        self.assertNotIn("project", meta)
+        sub_types = self.jira("GET", "issue/DEMO-32/editmeta")["fields"]["issuetype"]["allowedValues"]
+        self.assertEqual([t["name"] for t in sub_types], ["Sub-task"])
+
+        edits = [
+            {"issuetype": {"id": "10002"}},
+            {"reporter": {"accountId": mj.CAROL_ID}},
+            {"fixVersions": [{"id": "10200"}, {"id": "10201"}]},
+            {"components": [{"id": "10301"}]},
+            {mj.CLIENT_FIELD: {"id": "10102"}},
+        ]
+        for fields in edits:
+            self.jira("PUT", "issue/DEMO-5", {"fields": fields}, expect=204)
+            self.assertEqual(self.last_body("PUT", "/issue/DEMO-5"), {"fields": fields})
+        f = self.issue("DEMO-5", ["issuetype", "reporter", "fixVersions", "components", mj.CLIENT_FIELD])["fields"]
+        self.assertEqual(f["issuetype"]["name"], "Bug")
+        self.assertEqual(f["reporter"]["displayName"], "Carol Schmidt")
+        self.assertEqual([v["name"] for v in f["fixVersions"]], ["2026.10", "2026.11"])
+        self.assertEqual([c["name"] for c in f["components"]], ["API"])
+        self.assertEqual(f[mj.CLIENT_FIELD]["value"], "Initech")
+        hist = self.issue("DEMO-5", ["summary"], "changelog")["changelog"]["histories"][:5]
+        self.assertEqual([h["items"][0]["field"] for h in hist], ["Client", "Component", "Fix Version", "reporter", "issuetype"])
+        self.assertEqual((hist[3]["items"][0]["toString"], hist[4]["items"][0]["toString"]), ("Carol Schmidt", "Bug"))
+
+        # A task under an epic can't become an epic; a sub-task can't become a task.
+        err = self.jira("PUT", "issue/DEMO-5", {"fields": {"issuetype": {"id": "10000"}}}, expect=400)
+        self.assertIn("hierarchy", err["errors"]["issuetype"])
+        err = self.jira("PUT", "issue/DEMO-32", {"fields": {"issuetype": {"id": "10001"}}}, expect=400)
+        self.assertIn("issuetype", err["errors"])
+        # A type change plus a parent in one request is checked against the new type.
+        err = self.jira("PUT", "issue/DEMO-29", {"fields": {"issuetype": {"id": "10000"}, "parent": {"key": "DEMO-2"}}}, expect=400)
+        self.assertIn("parent", err["errors"])
+        free = self.jira("GET", "issue/DEMO-40/editmeta")["fields"]["issuetype"]["allowedValues"]
+        self.assertIn("Epic", [t["name"] for t in free])  # no parent, no children: any standard type
+
+    def test_delete_issue(self) -> None:
+        # DEMO-4 has sub-tasks: refused without deleteSubtasks, like Jira.
+        err = self.jira("DELETE", "issue/DEMO-4", expect=400)
+        self.assertIn("deleteSubtasks", err["errorMessages"][0])
+        self.assertEqual(self.issue("DEMO-31", ["summary"])["key"], "DEMO-31")
+        self.jira("DELETE", "issue/DEMO-4?deleteSubtasks=true", expect=204)
+        for key in ("DEMO-4", "DEMO-31", "DEMO-32", "DEMO-33"):
+            self.jira("GET", "issue/%s?fields=summary" % key, expect=404)
+        # An epic: its children stay, without a parent.
+        self.jira("DELETE", "issue/DEMO-2", expect=204)
+        self.assertNotIn("parent", self.issue("DEMO-11", ["parent"])["fields"])
+        self.jira("DELETE", "issue/DEMO-2", expect=404)
+        status, _, _ = self.app("DELETE", "/jira/issue/DEMO-5", extra={"X-Jira-Lite": "0"})
+        self.assertEqual(status, 403)  # the proxy header is still required
+
     def test_create_issue_validates_required_fields(self) -> None:
         base = {"project": {"key": PROJECT}, "issuetype": {"id": "10001"}, "summary": "Plan the Q1 offsite",
                 "description": text_to_adf("Venue and agenda."), "priority": {"id": "2"},

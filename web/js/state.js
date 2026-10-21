@@ -49,6 +49,8 @@ export const state = {
   viewsOpen: true,          // sidebar Views section expanded
   savedViews: [],           // saved views (see savedviews.js)
   activeView: null,         // id of the saved view last applied, until another view is picked
+  hiddenStatuses: new Set(), // status ids unticked in Display › Statuses (hidden in list and board)
+  detailWidth: 0,           // the detail panel's width in px when resized by hand (0: default)
   filter: "",               // free-text filter (not persisted)
 };
 
@@ -108,6 +110,8 @@ export function loadPrefs() {
   state.epic = recall("epic") || null;
   state.epicsOpen = recall("epicsOpen") !== "0";
   state.viewsOpen = recall("viewsOpen") !== "0";
+  state.detailWidth = Number(recall("detailWidth")) || 0;
+  state.hiddenStatuses = new Set(recallList("hiddenStatuses"));
   state.savedViews = parseViews(recall("savedViews"));
   const active = state.savedViews.find((v) => v.id === recall("activeView"));
   state.activeView = active ? active.id : null;

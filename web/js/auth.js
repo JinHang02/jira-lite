@@ -2,6 +2,7 @@
 import * as jira from "./api.js";
 import { state, stash } from "./state.js";
 import { $, el, icon, toast } from "./dom.js";
+import { logo } from "./icons.js";
 import { closeMenu } from "./menu.js";
 import { closeModal } from "./modal.js";
 import { stashCreateDraft } from "./create.js";
@@ -15,7 +16,7 @@ export const oauthMode = () => state.cfg.auth === "oauth";
 export function showSignIn() {
   state.signedOut = true;
   if ($("#signin")) return;
-  const { project, site } = state.cfg;
+  const { site } = state.cfg;
   const host = (site || "").replace(/^https?:\/\//, "").replace(/\/+$/, "");
   const go = el("button", { class: "btn primary big", id: "signinBtn" }, icon(16, SIGNIN_ICON, ""), "Sign in with Atlassian");
   go.addEventListener("click", () => {
@@ -23,9 +24,9 @@ export function showSignIn() {
     location.assign(jira.LOGIN_URL);
   });
   const card = el("div", { class: "signin-card", role: "dialog", "aria-labelledby": "signinTitle" },
-    el("span", { class: "logo big" }, (project || "").slice(0, 2)),
+    logo(40, "big"),
     el("h1", { id: "signinTitle" }, "Sign in to jira-lite"),
-    el("p", { class: "where" }, [project, host].filter(Boolean).join(" · ")),
+    el("p", { class: "where" }, host),
     go,
     el("p", { class: "note" }, "You'll act as yourself in Jira"));
   document.body.append(el("div", { id: "signin" }, card));

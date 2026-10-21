@@ -1,5 +1,5 @@
-// Properties block of the detail panel: parent epic, labels and due date (editable inline), fix
-// versions, components, required custom fields, reporter, created/updated.
+// Properties block of the detail panel: parent epic, labels, due date, reporter, fix versions,
+// components and required custom fields (editable where Jira's editmeta allows), created/updated.
 import * as jira from "./api.js";
 import { state } from "./state.js";
 import { el, icon, ICONS, toast } from "./dom.js";
@@ -8,9 +8,9 @@ import { avatar, statusIcon } from "./icons.js";
 import { statusKind } from "./status.js";
 import { labelHue } from "./issues.js";
 import { dayText } from "./activity.js";
-import { fieldText, localDay, dueState, parseLabels, parentAllowed, epicTypeName, epicJql, filterEpics } from "./props.js";
+import { fieldText, localDay, dueState, parseLabels, parentAllowed, epicTypeName, epicJql, filterEpics, pickKind, pickChoices, pickValue, canSet } from "./props.js";
 import { updateFields } from "./edits.js";
-import { openPopover, closeMenu } from "./menu.js";
+import { openMenu, openPopover, closeMenu, activeMenu } from "./menu.js";
 import { issueTypes } from "./meta.js";
 import { typeIcon } from "./typeicons.js";
 import { actions } from "./actions.js";
@@ -19,20 +19,135 @@ const row = (label, value, wide) => el("div", { class: "prow" + (wide ? " wide" 
 const none = (text = "None") => el("span", { class: "pnone" }, text);
 const stamp = (iso) => iso ? el("span", { title: new Date(iso).toLocaleString() }, ago(iso)) : none("—");
 
-/** The properties block. `customs` are [{id, name}] custom fields to show (required on create). */
-export function renderProps(issue, customs = []) {
+/**
+ * The properties block. `customs` are [{id, name}] custom fields to show (required on create);
+ * `meta` is the issue's editmeta fields (what may be changed; {} shows everything read-only).
+ */
+export function renderProps(issue, customs = [], meta = {}) {
   const f = issue.fields;
-  const list = (v) => fieldText(v) ? el("span", { class: "ptext", title: fieldText(v) }, fieldText(v)) : none();
   return el("div", { class: "pblock", "aria-label": "Properties" },
     parentAllowed(f.issuetype) ? row("Parent", parentEditor(issue.key, f.parent), true) : null,
     row("Labels", labelsEditor(issue.key, f.labels || []), true),
     row("Due date", dueEditor(issue.key, f.duedate, ["done", "canceled"].includes(statusKind(f.status)))),
-    row("Reporter", f.reporter ? el("span", { class: "pperson" }, avatar(f.reporter), f.reporter.displayName) : none()),
-    row("Fix versions", list(f.fixVersions)),
-    row("Components", list(f.components)),
-    customs.map((c) => row(c.name, list(f[c.id]))),
+    row("Reporter", reporterEditor(issue.key, f.reporter, meta.reporter)),
+    row("Fix versions", pickEditor(issue, "fixVersions", "Fix versions", meta.fixVersions)),
+    row("Components", pickEditor(issue, "components", "Components", meta.components)),
+    customs.map((c) => row(c.name, pickEditor(issue, c.id, c.name, meta[c.id]))),
     row("Created", stamp(f.created)),
     row("Updated", stamp(f.updated)));
+}
+
+/** Issue type menu (the detail chip): `types` are editmeta's allowed issue types. */
+export function typeMenu(key, cur, types, anchor) {
+  if (state.busy) return;
+  const items = types.map((t) => ({ id: String(t.id), label: t.name, icon: typeIcon(t), current: String(t.id) === String(cur.id) }));
+  openMenu(anchor, key + " · type", items, (it) => {
+    if (!it.current) updateFields(key, { issuetype: { id: it.id } }, key + " → " + it.label);
+  });
+}
+
+/** Reporter with a people menu when the user may change it (Jira's "Modify Reporter" permission). */
+function reporterEditor(key, reporter, meta) {
+  const shown = reporter ? el("span", { class: "pperson" }, avatar(reporter), reporter.displayName) : none();
+  if (!canSet(meta)) return shown;
+  const b = el("button", { class: "pedit", type: "button", title: "Change reporter", "aria-haspopup": "menu" }, shown);
+  b.addEventListener("click", () => {
+    if (state.busy) return;
+    const { me } = state;
+    const people = [...(me ? [me] : []), ...state.people.filter((u) => !me || u.accountId !== me.accountId)];
+    if (reporter && !people.some((u) => u.accountId === reporter.accountId)) people.unshift(reporter);
+    const items = people.map((u) => ({ id: u.accountId, label: u.displayName + (me && u.accountId === me.accountId ? " (me)" : ""), icon: avatar(u),
+      current: !!reporter && u.accountId === reporter.accountId }));
+    openMenu(b, key + " · reporter", items, (it) => {
+      if (!it.current) updateFields(key, { reporter: { accountId: it.id } }, key + ": reporter → " + it.label);
+    }, { search: true });
+  });
+  return b;
+}
+
+/** A pick-list field (fix versions, components, Client…): its value, a menu when editmeta allows. */
+function pickEditor(issue, fid, name, meta) {
+  const v = issue.fields[fid];
+  const text = fieldText(v);
+  const kind = pickKind(meta);
+  const shown = text ? el("span", { class: "ptext", title: text }, text) : none(kind ? "Set " + name.toLowerCase() + "…" : "None");
+  if (!kind) return shown;
+  const b = el("button", { class: "pedit", type: "button", title: "Change " + name.toLowerCase(), "aria-haspopup": kind === "many" ? "dialog" : "menu" }, shown);
+  b.addEventListener("click", () => {
+    const open = activeMenu();
+    if (open && open.anchor === b) return closeMenu();  // a second click closes (and saves) the open list
+    if (state.busy) return;
+    if (kind === "one") pickOne(issue.key, fid, name, meta, v || null, b);
+    else pickMany(issue.key, fid, name, meta, v || [], b);
+  });
+  return b;
+}
+
+function pickOne(key, fid, name, meta, cur, anchor) {
+  const items = [...(meta.required ? [] : [{ id: null, label: "None", current: !cur }]),
+    ...pickChoices(meta, cur).map((c) => ({ id: c.id, label: fieldText(c), value: c, current: !!cur && String(cur.id) === String(c.id) }))];
+  openMenu(anchor, key + " · " + name, items, (it) => {
+    if (!it.current) updateFields(key, { [fid]: pickValue("one", it.value || null) }, key + ": " + name + " → " + (it.value ? it.label : "None"));
+  }, { search: items.length > 8 });
+}
+
+/**
+ * Checkbox list for a multi-value field; the change is saved once, when the popover closes
+ * (Esc, a click outside). ↑/↓ move, Enter or Space toggles.
+ */
+function pickMany(key, fid, name, meta, cur, anchor) {
+  const offered = pickChoices(meta, cur);
+  const all = [...offered, ...cur.filter((v) => !offered.some((c) => String(c.id) === String(v.id)))];
+  const picked = new Set(cur.map((v) => String(v.id)));
+  const before = [...picked].sort().join();
+  const search = all.length > 8 ? el("input", { class: "msearch", placeholder: "Filter…", autocomplete: "off", "aria-label": "Filter " + name.toLowerCase() }) : null;
+  const list = el("div", { class: "mlist", role: "listbox", "aria-multiselectable": "true", "aria-label": name });
+  let buttons = [], idx = 0;
+  const hilite = (n, focus) => {
+    if (!buttons.length) return;
+    idx = (n + buttons.length) % buttons.length;
+    buttons.forEach((b, i) => b.classList.toggle("hi", i === idx));
+    buttons[idx].scrollIntoView({ block: "nearest" });
+    if (focus && !search) buttons[idx].focus();
+  };
+  const render = () => {
+    const q = search ? search.value.trim().toLowerCase() : "";
+    const hits = all.filter((c) => !q || fieldText(c).toLowerCase().includes(q));
+    buttons = hits.map((c, i) => {
+      const on = picked.has(String(c.id));
+      const b = el("button", { class: "mi", type: "button", role: "option", "aria-selected": String(on) },
+        el("span", { class: "mcheck" + (on ? " on" : "") }, on ? icon(12, ICONS.check, "") : null), el("span", { class: "grow" }, fieldText(c)),
+        c.released ? el("span", { class: "via" }, "released") : c.archived ? el("span", { class: "via" }, "archived") : null);
+      b.addEventListener("mousemove", () => hilite(i));
+      b.addEventListener("click", () => {
+        const id = String(c.id);
+        if (picked.has(id)) picked.delete(id);
+        else picked.add(id);
+        idx = i;
+        render();
+        hilite(idx, true);
+      });
+      return b;
+    });
+    list.replaceChildren(...(buttons.length ? buttons : [el("div", { class: "mh" }, "No matches")]));
+    hilite(Math.min(idx, buttons.length - 1));
+  };
+  const save = () => {
+    if ([...picked].sort().join() === before) return;
+    const values = all.filter((c) => picked.has(String(c.id)));
+    updateFields(key, { [fid]: pickValue("many", values) }, key + ": " + name + " → " + (values.map(fieldText).join(", ") || "None"));
+  };
+  const box = openPopover(anchor, [el("div", { class: "mh" }, key + " · " + name), search, list, el("div", { class: "mh mfoot" }, "Saved when you close this")],
+    { label: name, cls: "multipick", onClose: save });
+  box.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown") { e.preventDefault(); hilite(idx + 1, true); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); hilite(idx - 1, true); }
+    else if (e.key === "Enter" || (e.key === " " && e.target !== search)) { e.preventDefault(); if (buttons[idx]) buttons[idx].click(); }
+  });
+  if (search) search.addEventListener("input", () => { idx = 0; render(); });
+  render();
+  if (search) search.focus();
+  else hilite(0, true);
 }
 
 /** Label pills with remove buttons, plus "+" that turns into an input (Enter adds, Esc cancels). */
@@ -42,7 +157,7 @@ function labelsEditor(key, labels) {
   for (const l of labels) {
     const x = el("button", { class: "lx", type: "button", title: "Remove label " + l, "aria-label": "Remove label " + l }, icon(14, ICONS.close, ""));
     x.addEventListener("click", () => { if (!state.busy) save(labels.filter((y) => y !== l), key + ": removed label " + l); });
-    box.append(el("span", { class: "label" }, el("span", { class: "ldot", style: "--h:" + labelHue(l) }), l, x));
+    box.append(el("span", { class: "label", title: l }, el("span", { class: "ldot", style: "--h:" + labelHue(l) }), el("span", { class: "ltext" }, l), x));
   }
   const add = el("button", { class: "ladd", type: "button", title: "Add labels", "aria-label": "Add labels" },
     icon(14, ICONS.plus, ""), labels.length ? null : "Add label");

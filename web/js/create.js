@@ -2,10 +2,11 @@
 import * as jira from "./api.js";
 import { state, store, recall, stash, unstash } from "./state.js";
 import { el, icon, ICONS, toast } from "./dom.js";
-import { prioIcon, avatar } from "./icons.js";
+import { prioIcon, avatar, logo } from "./icons.js";
 import { typeIcon } from "./typeicons.js";
-import { textToAdf } from "./adf.js";
+import { fromMarkdown } from "./markdown.js";
 import { showModal, closeModal } from "./modal.js";
+import { openMenu } from "./menu.js";
 import { issueTypes, typeFields } from "./meta.js";
 import { actions } from "./actions.js";
 
@@ -65,7 +66,7 @@ export async function openCreate(parent) {
   const defType = (types.find((t) => t.id === lastType) || types.find((t) => t.name === "Task") || types[0]).id;
 
   const title = el("input", { class: "ntitle", placeholder: parent ? "Sub-issue title" : "Issue title", autocomplete: "off", "aria-label": "Title" });
-  const desc = el("textarea", { class: "ndesc", placeholder: "Add description…", "aria-label": "Description" });
+  const desc = el("textarea", { class: "ndesc", placeholder: "Description", "aria-label": "Description", title: "Markdown works: **bold**, - lists, - [ ] checklists, `code`" });
   if (!parent) { title.value = createDraft.title; desc.value = createDraft.desc; }
 
   const type = chipSelect("Issue type", types.map((t) => [t.id, t.name]), defType, (v) => typeIcon(types.find((t) => t.id === v)));
@@ -75,6 +76,24 @@ export async function openCreate(parent) {
   const ppl = [...(me ? [me] : []), ...people.filter((u) => !me || u.accountId !== me.accountId)];
   const who = chipSelect("Assignee", [["", "Unassigned"], ...ppl.map((u) => [u.accountId, u.displayName + (me && u.accountId === me.accountId ? " (me)" : "")])],
     me ? me.accountId : "", (v) => avatar(ppl.find((u) => u.accountId === v) || null));
+  who.chip.title = "Assignee: who will work on it. You'll be the reporter (Jira sets the creator).";
+  // Everyone assignable, searchable, with avatars (like the assignee menu elsewhere) instead of the OS dropdown.
+  const pickWho = (e) => {
+    e.preventDefault();
+    const cur = who.s.value;
+    const items = [{ id: "", label: "Unassigned", icon: avatar(null), current: !cur },
+      ...ppl.map((u) => ({ id: u.accountId, label: u.displayName + (me && u.accountId === me.accountId ? " (me)" : ""), icon: avatar(u), current: u.accountId === cur }))];
+    openMenu(who.chip, "Assignee", items, (it) => {
+      who.s.value = it.id;
+      who.s.dispatchEvent(new Event("change"));
+      who.s.focus({ preventScroll: true });
+    }, { search: true });
+  };
+  // mousedown only stops the OS dropdown: opening the menu there would let the outside-click
+  // handler (menu.js, also on mousedown) close it at once.
+  who.s.addEventListener("mousedown", (e) => e.preventDefault());
+  who.s.addEventListener("click", pickWho);
+  who.s.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " " || e.key === "ArrowDown") pickWho(e); });
   const extras = el("div", { class: "props" });
   const reqSec = el("div", { class: "reqsec", hidden: true }, el("div", { class: "reqh" }, "Required by Jira"), extras);
   const warn = el("div", { class: "warn" });
@@ -121,10 +140,6 @@ export async function openCreate(parent) {
   const msg = el("span", { class: "cmsg" });
   const create = el("button", { class: "btn primary", type: "button" }, parent ? "Create sub-issue" : "Create issue");
   const cancel = el("button", { class: "btn", type: "button", onclick: closeModal }, "Cancel");
-  const more = el("input", { type: "checkbox", class: "tgl" });
-  more.checked = recall("createMore") === "1";
-  more.addEventListener("change", () => store("createMore", more.checked ? "1" : "0"));
-  const moreToggle = el("label", { class: "cmore", title: "Keep this dialog open to create another issue" }, more, el("span", {}, "Create more"));
 
   async function submit() {
     if (create.disabled) return;
@@ -134,7 +149,7 @@ export async function openCreate(parent) {
     dynamic.forEach((d) => d.chip.classList.toggle("bad", !d.s.value));
     if (missing.length) { msg.textContent = "Pick " + missing.map((d) => d.field.name).join(", ") + "."; return; }
     const fields = { project: { key: cfg.project }, issuetype: { id: type.s.value }, summary };
-    if (desc.value.trim()) fields.description = textToAdf(desc.value);
+    if (desc.value.trim()) fields.description = fromMarkdown(desc.value.trim());
     if (prio.s.value && fieldIds.has("priority")) fields.priority = { id: prio.s.value };
     if (who.s.value && fieldIds.has("assignee")) fields.assignee = { accountId: who.s.value };
     if (parent) fields.parent = { key: parent.key };
@@ -148,16 +163,6 @@ export async function openCreate(parent) {
       if (!parent) createDraft = { title: "", desc: "" };
       title.value = "";
       toast("Created " + r.key);
-      if (more.checked && dialog.isConnected) {
-        // Keep type, priority, assignee and required fields for the next one.
-        desc.value = "";
-        create.disabled = false;
-        msg.textContent = "Created " + r.key + ".";
-        title.focus();
-        actions.sync();
-        if (parent && state.current === parent.key) actions.loadDetail();
-        return;
-      }
       closeModal();
       await actions.sync();
       if (parent && state.current === parent.key) actions.loadDetail();
@@ -171,12 +176,12 @@ export async function openCreate(parent) {
   create.addEventListener("click", submit);
 
   const dialog = el("div", { class: "modal cdialog", role: "dialog", "aria-label": parent ? "New sub-issue" : "New issue" },
-    el("div", { class: "mhead" }, el("span", { class: "logo" }, cfg.project.slice(0, 2)),
-      el("span", {}, parent ? cfg.project + " › " + parent.key + " › New sub-issue" : cfg.project + " › New issue"),
+    el("div", { class: "mhead" }, logo(20),
+      el("span", {}, parent ? parent.key + " › New sub-issue" : "New issue"),
       el("span", { class: "spacer" }), el("button", { class: "btn icon", type: "button", title: "Close (esc)", "aria-label": "Close", onclick: closeModal }, icon(14, ICONS.close, ""))),
     el("div", { class: "mbody" }, title, desc,
       el("div", { class: "props" }, type.chip, prio.chip, who.chip), reqSec, warn),
-    el("div", { class: "mfoot" }, moreToggle, msg, cancel, create, el("kbd", { title: "Create" }, "⌘↵")));
+    el("div", { class: "mfoot" }, msg, el("span", { class: "spacer" }), cancel, create, el("kbd", { title: "Create" }, "⌘↵")));
   dialog.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); }
     else if (e.key === "Enter" && e.target === title) { e.preventDefault(); desc.focus(); }

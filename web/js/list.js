@@ -5,11 +5,12 @@ import { $, el, icon, ICONS } from "./dom.js";
 import { statusKind } from "./status.js";
 import { groupIssues } from "./issues.js";
 import { shortDate } from "./format.js";
-import { statusIcon, prioIcon, avatar, subBadge } from "./icons.js";
+import { statusIcon, prioIcon, avatar, subBadge, groupIcon } from "./icons.js";
 import { labelPills, dueChip } from "./chips.js";
 import { statusMenu, priorityMenu, assigneeMenu } from "./edits.js";
 import { setCursor } from "./cursor.js";
 import { selBox, clickSelect, bindSelect } from "./selection.js";
+import { typeBadge, typeKind, parentHint } from "./typeicons.js";
 import { actions } from "./actions.js";
 
 /** Renders `list` (already filtered and ordered) into #list. */
@@ -31,13 +32,6 @@ export function renderList(list) {
   $("#list").replaceChildren(...sections);
 }
 
-function groupIcon(g) {
-  if (g.status) return statusIcon(g.status);
-  if ("assignee" in g) return avatar(g.assignee);
-  if ("priority" in g) return prioIcon(g.priority);
-  return null;
-}
-
 function row(i) {
   const f = i.fields;
   const btn = (title, child, onPick) => {
@@ -50,11 +44,13 @@ function row(i) {
     "data-key": i.key, onclick: (e) => { if (!clickSelect(e, i.key)) actions.openIssue(i.key); }, onmouseenter: () => setCursor(i.key),
   },
     btn((f.priority ? "Priority: " + f.priority.name : "No priority") + " (P)", prioIcon(f.priority), (b) => priorityMenu(i.key, b)),
-    el("span", { class: "rid" }, i.key),
+    typeBadge(f.issuetype),
+    el("span", { class: "rid" + (typeKind(f.issuetype) === "epic" ? " epic" : "") }, i.key),
     btn("Status: " + f.status.name + " (S)", statusIcon(f.status), (b) => statusMenu(i.key, b)),
-    el("span", { class: "rtitle", title: f.parent ? "Parent: " + f.parent.key + " " + (f.parent.fields || {}).summary : null }, f.summary),
+    el("span", { class: "rtitle" }, f.summary),
+    parentHint(f, state.epic, actions.openIssue),
     el("span", { class: "rright" },
-      state.showSubProgress ? subBadge(f) : null,
+      state.showSubProgress ? subBadge(i, state.epics) : null,
       labelPills(f.labels),
       dueChip(i),
       btn((f.assignee ? "Assignee: " + f.assignee.displayName : "Unassigned") + " (A)", avatar(f.assignee), (b) => assigneeMenu(i.key, b)),

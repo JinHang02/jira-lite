@@ -34,17 +34,20 @@
   #newBtn { width: var(--ctrl-h); padding: 0; justify-content: center; }
   #newBtn .lbl { display: none; }
 
-  .row { display: grid; grid-template-columns: 22px auto 1fr auto; grid-template-areas: "st title title title" "pr id . right";
+  .row { display: grid; grid-template-columns: 22px auto auto 1fr auto; grid-template-areas: "st title title title title" "pr ty id hint right";
     align-items: center; column-gap: 8px; row-gap: 2px; height: auto; min-height: 58px; padding: 8px 12px; }
   .row > .ibtn:first-child { grid-area: pr; }
   .row > .ibtn:nth-of-type(2) { grid-area: st; }
   .row > .rid { grid-area: id; width: auto; font-size: 12px; }
+  .row > .tbadge { grid-area: ty; }
+  .row > .phint { grid-area: hint; justify-self: start; max-width: 100%; }
   .row > .rtitle { grid-area: title; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 19px; }
   .row > .rright { grid-area: right; gap: 6px; max-width: none; }
   .gh { padding: 0 12px 0 8px; }
 
   #board { padding: 8px; }
-  .col { width: min(264px, 80vw); }
+  .col, .swimhead > .colh, .swimcell { width: min(264px, 80vw); }
+  #board.swim:not([hidden]) { padding: 0 8px 24px; }
 
   #detail { position: fixed; inset: 0; z-index: 5; width: auto; min-width: 0; max-width: none; border: 0; }
   .dscroll { padding: 20px 16px 40px; }
@@ -68,4 +71,9 @@
   .selbtn .lbl, .selbtn .selchev { display: none; }
   .selbtn { padding: 0 9px; }
   .selbtn.clear .selx { display: block; }
+}
+
+/* Phone: the panel is full-screen, nothing to resize. */
+@media (max-width: 760px) {
+  #dsplit { display: none; }
 }

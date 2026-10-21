@@ -1,7 +1,7 @@
 // Status and priority icons, avatars and the sub-issue badge.
 import { el, icon, ICONS } from "./dom.js";
 import { statusKind, prioKind } from "./status.js";
-import { progress } from "./issues.js";
+import { childProgress } from "./issues.js";
 
 /** Linear-style status glyph: dashed ring, ring with a pie slice, or a filled disc. 14px. */
 export function statusIcon(s) {
@@ -53,11 +53,34 @@ export function avatar(u) {
   return el("span", { class: "av", title: u.displayName, style: "background:hsl(" + h + " 45% 48%)" }, initials);
 }
 
-/** "2/5" sub-task progress pill, or null when the issue has no sub-tasks. */
-export function subBadge(f) {
-  const { done, total } = progress(f.subtasks);
+/** "2/5" progress pill of an issue's sub-issues (an epic's child issues per `epics`, else its sub-tasks), or null. */
+export function subBadge(issue, epics) {
+  const { done, total, epic } = childProgress(issue, epics);
   if (!total) return null;
-  return el("span", { class: "badge", title: done + " of " + total + " sub-tasks done" }, icon(12, ICONS.sub, ""), done + "/" + total);
+  return el("span", { class: "badge", title: done + " of " + total + (epic ? " child issues" : " sub-tasks") + " done" }, icon(12, ICONS.sub, ""), done + "/" + total);
+}
+
+const COMPONENT_SVG = '<path d="M7 1.75l4.75 2.6v5.3L7 12.25l-4.75-2.6v-5.3z M2.5 4.4L7 6.9l4.5-2.5M7 6.9v5.2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>';
+
+/** The icon for a group from issues.groupIssues (list group headers, board swimlanes). */
+export function groupIcon(g) {
+  if (g.status) return statusIcon(g.status);
+  if ("assignee" in g) return avatar(g.assignee);
+  if ("priority" in g) return prioIcon(g.priority);
+  if ("component" in g) return icon(14, COMPONENT_SVG, "gcomp");
+  return null;
+}
+
+// The app's mark: a mirrored "jl" monogram on an accent tile (24-unit grid; the tile takes currentColor).
+const LOGO = '<rect width="24" height="24" rx="6" fill="currentColor"/><g fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round">' +
+  '<path d="M10 10.5v5a3.5 3.5 0 0 1-3.5 3.5"/><path d="M14 5v10.5a3.5 3.5 0 0 0 3.5 3.5"/></g><circle cx="10" cy="6.5" r="1.6" fill="#fff"/>';
+
+/** The jira-lite logo at `size` px (sidebar 20, sign-in 40); `cls` adds classes after "logo". */
+export function logo(size, cls = "") {
+  const s = icon(24, LOGO, ("logo " + cls).trim());
+  s.setAttribute("width", size);
+  s.setAttribute("height", size);
+  return s;
 }
 
 /** Sidebar navigation glyphs (16px). */

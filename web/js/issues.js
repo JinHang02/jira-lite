@@ -15,11 +15,26 @@ export function filterIssues(issues, filter) {
   return q ? issues.filter((i) => matches(i, q)) : issues;
 }
 
+/** Issues whose status id isn't in `hidden` (Display › Statuses). */
+export function hideStatuses(issues, hidden) {
+  return hidden && hidden.size ? issues.filter((i) => !hidden.has(String(((i.fields || {}).status || {}).id))) : issues;
+}
+
 /** {done, total} for a list of sub-issues (each with fields.status). */
 export function progress(children) {
   const total = (children || []).length;
   const done = (children || []).filter((c) => (((c.fields || {}).status || {}).statusCategory || {}).key === "done").length;
   return { done, total };
+}
+
+/**
+ * {done, total, epic} of an issue's sub-issues: an epic's child issues as counted for the sidebar
+ * (`epics`: [{key, done, total}]), otherwise its sub-tasks.
+ */
+export function childProgress(issue, epics) {
+  const e = (epics || []).find((x) => x.key === issue.key);
+  if (e && e.total) return { done: e.done, total: e.total, epic: true };
+  return { ...progress(((issue || {}).fields || {}).subtasks), epic: false };
 }
 
 /** True if the issue's status is in Jira's Done category. */
@@ -28,7 +43,7 @@ export const isDone = (issue) => ((((issue || {}).fields || {}).status || {}).st
 // ---- Display options: grouping and ordering (the header's Display popover) ----
 
 /** List groupings; the board always shows status columns. */
-export const GROUPINGS = ["status", "assignee", "priority", "none"];
+export const GROUPINGS = ["status", "assignee", "priority", "component", "none"];
 /** Orderings, applied within each group (and within board columns). */
 export const ORDERINGS = ["updated", "priority", "created"];
 
@@ -63,9 +78,11 @@ function bucket(issues, keyOf, meta) {
 
 /**
  * Groups (already ordered) issues for the list view: [{key, label, items, status|assignee|priority}].
- * - "status": in KIND_ORDER; the key is the status name (what the collapsed-groups pref stores).
+ * - "status": in workflow order (BOARD_ORDER, like the board); the key is the status name (what the collapsed-groups pref stores).
  * - "assignee": by name, "Unassigned" last.
  * - "priority": Highest..Lowest, then unrecognised priorities, then "No priority".
+ * - "component": by the issue's components together ("API, Web"; each issue shows once), A-Z,
+ *   "No component" last.
  * - "none": a single group with key "" (rendered without a header), or [] for no issues.
  * The order of issues within a group is preserved.
  */
@@ -82,6 +99,11 @@ export function groupIssues(issues, grouping) {
     return bucket(issues, (i) => "priority:" + (p(i) ? p(i).name : ""),
       (i) => ({ label: p(i) ? p(i).name : "No priority", priority: p(i) }))
       .sort((x, y) => prioRank(x.priority) - prioRank(y.priority) || (!x.priority) - (!y.priority) || x.label.localeCompare(y.label));
+  }
+  if (grouping === "component") {
+    const names = (i) => (i.fields.components || []).map((c) => c.name).filter(Boolean).sort((a, b) => a.localeCompare(b));
+    return bucket(issues, (i) => "component:" + names(i).join("\n"), (i) => ({ label: names(i).join(", ") || "No component", component: names(i) }))
+      .sort((x, y) => (!x.component.length) - (!y.component.length) || x.label.localeCompare(y.label));
   }
   return groupByStatus(issues).map((g) => ({ key: g.status.name, label: g.status.name, status: g.status, items: g.items }));
 }
@@ -115,3 +137,23 @@ export function labelHue(name) {
   for (const ch of String(name)) h = (h * 31 + ch.charCodeAt(0)) % 360;
   return h;
 }
+
+// ---- deleting ----
+
+/** `issues` without `key` and its sub-tasks (Jira deletes those with it); other children stay. */
+export function withoutIssue(issues, key) {
+  return (issues || []).filter((i) => i.key !== key &&
+    !(((i.fields || {}).parent || {}).key === key && ((i.fields || {}).issuetype || {}).subtask));
+}
+
+/** The delete dialog's warning lines for an issue with these many sub-tasks / child issues. */
+export function deleteWarning({ subtasks = 0, children = 0 } = {}) {
+  const n = (k, one) => k + " " + one + (k === 1 ? "" : "s");
+  const out = ["You're about to permanently delete this issue, its comments, attachments and all of its data. This can't be undone."];
+  if (subtasks) out.push("Its " + n(subtasks, "sub-task") + " will be deleted too.");
+  if (children) out.push(n(children, "child issue") + " will lose " + (children === 1 ? "its" : "their") + " parent but won't be deleted.");
+  return out;
+}
+
+/** True once the confirmation box says "delete" (case and surrounding spaces ignored). */
+export const deleteTyped = (text) => String(text || "").trim().toLowerCase() === "delete";

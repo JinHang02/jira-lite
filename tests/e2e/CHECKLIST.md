@@ -9,18 +9,19 @@ comment), DEMO-14 (attachments), DEMO-39 (>100 changelog entries), DEMO-24 (unas
 DEMO-7 and DEMO-26 (Blocked, overdue).
 
 ## List
-- [ ] First load shows skeleton rows, then "My issues 11" grouped In Progress › In Review › Blocked › To Do › Backlog.
-- [ ] Row: priority icon, key, status icon, title, sub-issue badge (DEMO-4 "1/3"), up to 2 label pills + "+N", due chip (red overdue, amber ≤2 days, "Today"/"Tomorrow"), avatar, updated date.
+- [ ] First load shows skeleton rows, then "My issues 11" grouped Backlog › To Do › In Progress › Blocked › In Review (workflow order, same as the board).
+- [ ] Row: priority icon, type icon (tooltip = type), key (epics purple), status icon, title, `↳ PARENT` hint (click opens parent; hidden while the panel is open or when viewing that epic), sub-issue badge (DEMO-4 "1/3" sub-tasks; epics like DEMO-1 count their child issues, same number as the sidebar), up to 2 label pills + "+N", due chip (red overdue, amber ≤2 days, "Today"/"Tomorrow"), avatar, updated date.
 - [ ] Click a group header → collapses (count stays); reload → still collapsed. Enter/Space on a focused header toggles it.
 - [ ] Row buttons: priority / status / assignee open menus anchored to the button; picking one writes and the row updates.
 - [ ] `j`/`k`/↑/↓ move the cursor; `Enter`/`o` opens the issue; `Esc` closes the panel.
 
 ## Display menu (grouping / ordering / options)
-- [ ] Display › Grouping: Assignee (Unassigned last), Priority (Highest…Lowest, No priority last), No grouping (flat list).
+- [ ] Display › Grouping: Assignee (Unassigned last), Priority (Highest…Lowest, No priority last), Component (All issues: API 2, API, Web 1, Mobile 1, Web 2, No component 26 — each issue once; changing an issue's components regroups it), No grouping (flat list).
 - [ ] Ordering: Last updated, Priority (Highest first, ties by updated), Created (newest first) — applies within groups.
-- [ ] Show completed → Done/Canceled groups appear and the list scrolls to them; off → they disappear.
+- [ ] Display › Statuses: a tick per project status (board order). Untick Backlog + To Do → those columns and their issues disappear from the board and the list (count drops); "Show all" appears and restores them; survives reload. Untick everything → "All N issues are in hidden statuses" with "Show all statuses".
+- [ ] Switch to List while the board is grouped (e.g. by Component) → the board is gone, the list fills the page.
 - [ ] Show sub-issue progress off → no "1/3" badges. All four settings survive a reload.
-- [ ] On the board, Grouping is disabled with "The board's columns are statuses".
+- [ ] On the board, Grouping offers None / Assignee / Priority / Component. Component → sticky column header row, one collapsible row per group (API 2, API, Web 1, Mobile 1, Web 2, No component); dragging a card to another column inside its row transitions it; collapsed rows survive reload; None → the plain board again.
 
 ## Filter
 - [ ] `/` focuses Filter; typing "signup" narrows to matching key/title/assignee; count shows "N / 11"; Enter moves the cursor to the first hit.
@@ -28,25 +29,33 @@ DEMO-7 and DEMO-26 (Blocked, overdue).
 
 ## Sidebar
 - [ ] My issues / All issues switch the list and the title; People lists Alice, Bob, Carol, Sam (not "Automation for Jira").
+- [ ] Header title shows the person's avatar (or the My/All icon) and a ▾; click → searchable menu (My issues, All issues, everyone with avatars) that switches the view.
 - [ ] Clicking a person shows their issues; title = their name; empty person view says "No open issues assigned to …".
 - [ ] People header collapses the section (selected person stays visible); state survives reload.
 - [ ] `[` or the header toggle collapses/expands the sidebar (remembered). `?` button opens the shortcuts dialog.
 
 ## Board + drag
-- [ ] ⌘B (or Board) shows columns Backlog › To Do › In Progress › Blocked › In Review (+Done/Canceled when shown); "+N empty" chip expands empty columns, "Hide empty" folds them.
+- [ ] ⌘B (or Board) shows columns Backlog › To Do › In Progress › Blocked › In Review (+Done/Canceled when shown); empty columns hidden; Display › Show empty columns (board only) shows them, remembered. No chips after the last column.
 - [ ] Drag DEMO-9 (To Do) to In Progress → toast "DEMO-9 → In Progress", card moves; mock got `POST …/DEMO-9/transitions {"transition":{"id":"31"}}`.
 - [ ] Drag a To Do card to Done → error toast "can't move from To Do to Done directly in this workflow"; nothing sent.
-- [ ] "Show completed" lane chip reloads with Done columns.
+- [ ] Display › Statuses › tick Done → completed issues are fetched (search JQL without `statusCategory != Done`), the Done column/group appears and is scrolled to; untick it (the last done status) → fetched without them again. No separate "Show completed" switch.
 
 ## Detail panel
-- [ ] Click DEMO-4: URL hash `#DEMO-4`, breadcrumb, copy key / copy link (toast), Open in Jira → mock browse page.
+- [ ] Click DEMO-4: URL hash `#DEMO-4`, breadcrumb `[epic] DEMO-1 › [story] DEMO-4` (type icons; hover shows type + summary; click DEMO-1 opens it; DEMO-32 shows DEMO-1 › DEMO-4 › DEMO-32; DEMO-34 from Alice's view fetches DEMO-9 once to show DEMO-2 › DEMO-9 › DEMO-34), copy key / copy link (toast), Open in Jira → mock browse page.
 - [ ] Parent link "DEMO-1 · Customer onboarding revamp" opens the epic.
-- [ ] Description renders headings, ordered + bullet lists, italic, @mention, emoji, attachment chip; DEMO-1 table and link; DEMO-6 code block with language label and copy button. Rich ones show "Edit in Jira ↗".
-- [ ] Plain description (DEMO-5): Edit → textarea → ⌘↵ saves (toast, re-render); Esc cancels.
+- [ ] Description renders headings, ordered + bullet lists, italic, @mention, emoji, attachment chip; DEMO-1 table and link; DEMO-6 code block with language label and copy button.
+- [ ] Description Edit (or double-click the description; not on links/code) → Markdown textarea; `- [ ]` / `- [x]` lines save as a Jira checklist. DEMO-4 shows `_eleven_`, `### Acceptance criteria`, `1.`/`-` lists, `:tada:`, `@Carol Schmidt` and `⟦1 · attachment: signup-step2.png⟧`; hint mentions ⟦…⟧. Make **bold**, add a bullet, ⌘↵ → saved; image, emoji and mention unchanged in the PUT body. Save without changes sends nothing; Esc cancels.
+- [ ] Tables: DEMO-1's table shows as `| … |` rows under a `| --- |` line; edit a cell, save → same table (layout kept) with the new text. Typed `| a | b |` + `|---|---|` + rows → a Jira table with a header row. Tables with merged cells, column widths or row numbers stay `⟦n · table⟧`.
+- [ ] In the description editor, paste a screenshot (⌘V) → `⟦uploading screenshot-….png…⟧`, Save disabled, then `⟦n · attachment: screenshot-YYYYMMDD-HHMMSS.png⟧`; save → image shows inline, Attachments +1, PUT has mediaSingle with the id from `GET /files/media/{attId}`. Drop an image or use "Image" → same. Drop a .txt → attached only (toast), text unchanged. Cancel after uploading → attachment list refreshes.
+- [ ] Delete (trash in the panel header) on DEMO-4: dialog names the summary, "Its 3 sub-tasks will be deleted too."; Delete disabled until `delete` is typed (case-insensitive), Enter on a partial word does nothing, Esc closes. Confirm → `DELETE …/DEMO-4?deleteSubtasks=true`, panel closes, DEMO-4/31/32/33 leave the list, toast "Deleted DEMO-4". On an epic: "N child issues will lose their parent".
+- [ ] Type chip (DEMO-4 Story) → menu Epic/Task/Bug/Story; pick Bug → toast "DEMO-4 → Bug", row icon + activity "changed the type". Task under an epic → Epic: error toast (hierarchy). Sub-task (DEMO-32) offers only Sub-task (chip not clickable).
 - [ ] Title click → edit; Enter saves (`PUT {"fields":{"summary":…}}`), Esc cancels, blur saves.
 - [ ] Status / priority / assignee chips and `s` / `p` / `a` open the same menus; status menu lists only workflow transitions (DEMO-5 To Do: Backlog, In Progress, Canceled).
 - [ ] Sub-issues list with progress "1/3 done"; status button on a child changes it; clicking a child opens it.
 - [ ] Reload the page with `#DEMO-4` → panel reopens.
+
+- [ ] Image viewer: click an image in the description, a comment or the Attachments list → full-window viewer (no new tab): name, size, "1 of N"; ←/→ and the side arrows switch images; click the image zooms to full size; Download, Open in Jira; Esc or a click outside closes. ⌘-click still opens a tab. Safari: Attachments tiles (non-images) open too (its `cross-site` link clicks pass on the Referer).
+- [ ] Panel resize: drag the left edge → wider/narrower (list keeps ≥ 320 px); reload keeps the width; double-click the edge resets; focused edge + ←/→ resizes. Hidden on phones.
 
 ## Activity
 - [ ] Timeline oldest→newest: "created the issue", history lines (status, assignee, priority, labels, due date), comment cards interleaved.
@@ -58,6 +67,8 @@ DEMO-7 and DEMO-26 (Blocked, overdue).
 - [ ] Labels: × removes one; + opens input, "a, b" + Enter adds both; a label with a space is split, not sent with a space.
 - [ ] Due date: click → date picker; pick → saved, overdue dates red; × removes (`{"duedate":null}`).
 - [ ] Shows Reporter, Fix versions, Components, Client (required custom field), Created, Updated.
+- [ ] Fix versions / Components: checkbox popover (archived 2025.12 hidden, 2026.09 "released"); ↑/↓ + Space toggles; Esc or click outside saves once (`PUT {"fields":{"fixVersions":[{"id":…}]}}`); no change → no request.
+- [ ] Client: menu without "None" (required); pick → `{"customfield_10050":{"id":…}}`. Reporter: searchable people menu → `{"reporter":{"accountId":…}}`.
 
 ## Comments
 - [ ] `m` focuses the composer; ⌘↵ posts; new card at the bottom, panel scrolls down; mock got ADF from the text.
@@ -71,8 +82,7 @@ DEMO-7 and DEMO-26 (Blocked, overdue).
 - [ ] Create without Client → chips turn red, "Pick Client, Fix versions."; nothing sent.
 - [ ] A Jira-side 400 is surfaced: a 300-character title → toast "Create failed: summary: Summary must be less than 255 characters."
 - [ ] Valid → toast "Created DEMO-41", dialog closes, list syncs, DEMO-41 opens.
-- [ ] "Create more" on → dialog stays, title clears, type/priority/assignee/required values kept; setting remembered.
-- [ ] Close with text typed → reopen → draft restored. ⌘↵ creates; Enter in title moves to description.
+- [ ] Close with text typed → reopen → draft restored. ⌘↵ creates; Enter in title moves to description. Description accepts Markdown (`## Plan` / `- [ ] step` → heading + checklist).
 - [ ] Sub-issue: DEMO-9 › "+ Add sub-issue" → only Sub-task type; Client/Fix versions preselected from the parent; created child appears under Sub-issues.
 - [ ] From an epic (DEMO-2): "+ Add sub-issue" offers Task/Bug/Story (not Sub-task); child gets `parent: DEMO-2`.
 

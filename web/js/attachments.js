@@ -83,3 +83,23 @@ export function uploadBatch(files, max = MAX_BODY) {
   }
   return { ok, tooBig };
 }
+
+/**
+ * A file name for an image pasted or dropped into the description: clipboard images are all
+ * called "image.png", and media nodes are matched to attachments by name, so those get
+ * "screenshot-YYYYMMDD-HHMMSS[-n].png". Real file names are kept.
+ */
+export function pastedName(name, type, date = new Date(), n = 0) {
+  if (name && !/^image\.\w+$/i.test(name)) return name;
+  const p = (x) => String(x).padStart(2, "0");
+  const ext = (/^image\/(\w+)/.exec(type || "") || [, "png"])[1].replace("jpeg", "jpg");
+  const stamp = date.getFullYear() + p(date.getMonth() + 1) + p(date.getDate()) + "-" + p(date.getHours()) + p(date.getMinutes()) + p(date.getSeconds());
+  return "screenshot-" + stamp + (n ? "-" + n : "") + "." + ext;
+}
+
+/** ADF for an image attachment shown in a description: mediaSingle > media (Media Services id). */
+export function imageNode(mediaId, filename, size) {
+  const attrs = { type: "file", id: mediaId, collection: "", alt: filename };
+  if (size && size.width > 0 && size.height > 0) Object.assign(attrs, { width: size.width, height: size.height });
+  return { type: "mediaSingle", attrs: { layout: "center" }, content: [{ type: "media", attrs }] };
+}

@@ -1,9 +1,21 @@
 /* ---- detail (peek) ---- */
-#detail { width: 50%; min-width: 400px; max-width: 760px; display: flex; flex-direction: column; border-left: 1px solid var(--border); background: var(--bg); }
+/* Resize handle on the panel's left border (resize.js); a line shows on hover and while dragging. */
+#dsplit { flex: none; position: relative; z-index: 2; width: 9px; margin: 0 -5px 0 -4px; cursor: col-resize; touch-action: none; }
+#dsplit::after { content: ""; position: absolute; top: 0; bottom: 0; left: 3px; width: 3px; border-radius: 2px; background: transparent;
+  transition: background var(--fast) var(--ease); }
+#dsplit:hover::after, #dsplit:focus-visible::after, .resizing #dsplit::after { background: var(--accent); }
+#dsplit:focus-visible { outline: none; }
+#body:has(> #detail[hidden]) > #dsplit { display: none; }
+body.resizing { cursor: col-resize; user-select: none; }
+#detail { width: var(--detail-w, 50%); min-width: max(280px, min(400px, calc(100% - 320px))); max-width: var(--detail-max, 760px); display: flex; flex-direction: column; border-left: 1px solid var(--border); background: var(--bg); }
 #detail[hidden] { display: none; }
 .dh { height: 48px; flex: none; display: flex; align-items: center; gap: 4px; padding: 0 12px 0 24px; border-bottom: 1px solid var(--border); color: var(--muted); min-width: 0; }
-.dh .crumb { font-weight: 500; white-space: nowrap; }
-.dh .ckey { color: var(--title); }
+.dh .crumbs { display: flex; align-items: center; gap: 1px; min-width: 0; overflow: hidden; margin-left: -6px; }
+.dh .crumb { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 6px; border-radius: 6px; font-weight: 500; white-space: nowrap;
+  font-variant-numeric: tabular-nums; }
+.dh .clink { color: var(--muted); flex: 0 1 auto; min-width: 0; }
+.dh .clink:hover { background: var(--bg-hover); color: var(--title); }
+.dh .ckey { color: var(--title); flex: none; }
 .dh .csep { color: var(--faint); padding: 0 2px; }
 .dh .btn.icon { border-color: transparent; background: none; color: var(--muted); }
 .dh .btn.icon:hover { background: var(--bg-hover); color: var(--title); }
@@ -12,7 +24,7 @@
 .parent { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; margin-bottom: 8px; color: var(--muted); font-size: 12px; font-weight: 500; }
 .parent:hover { color: var(--title); }
 .parent span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.dtitle { display: block; width: 100%; font-size: 20px; line-height: 28px; font-weight: 600; color: var(--title); margin: 0 0 14px; letter-spacing: -.01em;
+.dtitle { display: block; width: 100%; overflow-wrap: anywhere; font-size: 20px; line-height: 28px; font-weight: 600; color: var(--title); margin: 0 0 14px; letter-spacing: -.01em;
   border-radius: 6px; cursor: text; }
 h1.dtitle:hover { background: var(--bg-hover); box-shadow: 0 0 0 4px var(--bg-hover); }
 textarea.dtitle { border: 0; outline: 0; background: var(--bg-hover); box-shadow: 0 0 0 4px var(--bg-hover); resize: none; padding: 0; overflow: hidden; font-family: inherit; }
@@ -190,7 +202,7 @@ a.atttile:hover { text-decoration: none; background: var(--bg-hover); }
 /* ---- issue type icons ---- */
 .ticon { flex: none; border-radius: 3px; }
 .ti-task, .ti-subtask { color: #4bade8; } .ti-bug { color: #e5493a; } .ti-story, .ti-improvement, .ti-feature { color: #63ba3c; }
-.ti-epic { color: #904ee2; }
+.ti-epic { color: var(--type-epic); }
 
 /* ---- create dialog ---- */
 .csel { position: relative; padding-right: 8px; }
@@ -208,16 +220,22 @@ a.atttile:hover { text-decoration: none; background: var(--bg-hover); }
 .reqsec .props { margin-bottom: 4px; }
 .cdialog .mbody > .props { margin-bottom: 10px; }
 .cdialog .mfoot { flex-wrap: wrap; }
-.cmore { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; font-weight: 500; cursor: pointer; user-select: none; margin-right: 12px; }
-.tgl { appearance: none; -webkit-appearance: none; width: 26px; height: 16px; margin: 0; border-radius: 9999px; background: var(--bg-focus); border: 1px solid var(--border);
-  position: relative; cursor: pointer; transition: background .12s var(--ease); flex: none; }
-.tgl::after { content: ""; position: absolute; top: 1px; left: 1px; width: 12px; height: 12px; border-radius: 50%; background: var(--elevated); box-shadow: var(--shadow-low);
-  transition: transform .12s var(--ease); }
-.tgl:checked { background: var(--accent); border-color: transparent; }
-.tgl:checked::after { transform: translateX(10px); background: #fff; }
-.tgl:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 @media (max-width: 760px) {
   .dh { padding: 0 8px 0 16px; }
   .prow { grid-template-columns: 92px minmax(0, 1fr); }
 }
+
+/* ---- editable properties (pick lists, reporter) ---- */
+.pedit { display: inline-flex; align-items: center; min-width: 0; max-width: calc(100% + 6px); height: 24px; padding: 0 6px; margin-left: -6px; border-radius: 6px;
+  color: var(--text); text-align: left; transition: background var(--fast) var(--ease); }
+.pedit:hover { background: var(--bg-hover); }
+.multipick { min-width: 220px; }
+.mcheck { width: 14px; height: 14px; flex: none; display: inline-grid; place-items: center; border: 1px solid var(--faint); border-radius: 4px; color: #fff; }
+.mcheck.on { background: var(--accent); border-color: var(--accent); }
+.mfoot { border-top: 1px solid var(--border-faint); margin-top: 4px; font-weight: 400; }
+.composer textarea.mdedit { resize: none; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; line-height: 1.6; }
+.composer textarea.mdedit.dropping { outline: 2px dashed var(--accent); outline-offset: 4px; border-radius: 4px; }
+
+.label { max-width: 100%; min-width: 0; }
+.label .ltext { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

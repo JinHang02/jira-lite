@@ -9,7 +9,7 @@ from jira_lite import files
 from jira_lite.proxy import MAX_BODY, JiraProxy, no_redirect_opener, outgoing
 
 from .atlassian_fake import CLOUD_ID, OAuthAppTestCase
-from .support import MEDIA_PATH, PNG_BYTES, AppTestCase, FakeJira, start, stop
+from .support import MEDIA_PATH, MEDIA_UUID, PNG_BYTES, AppTestCase, FakeJira, start, stop
 
 BOUNDARY = "----jlboundary7MA4YWxk"
 MULTIPART = "multipart/form-data; boundary=" + BOUNDARY
@@ -35,6 +35,16 @@ class FilesPureTest(unittest.TestCase):
                 hdrs = {"Sec-Fetch-Site": site, "Referer": "http://localhost:8765/"}
                 self.assertIs(files.fetch_allowed(hdrs, ALLOWED), ok)
 
+    def test_safari_cross_site_link_click_falls_back_to_referer(self):
+        # Safari marks a target=_blank rel=noopener click on our own page as cross-site.
+        nav = {"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document"}
+        self.assertTrue(files.fetch_allowed(dict(nav, Referer="http://localhost:8765/"), ALLOWED))
+        self.assertFalse(files.fetch_allowed(dict(nav, Referer="http://evil.test/"), ALLOWED))
+        self.assertFalse(files.fetch_allowed(nav, ALLOWED))
+        # Subresources from elsewhere stay refused even with our Referer (only a non-browser could send that).
+        img = {"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "no-cors", "Referer": "http://localhost:8765/"}
+        self.assertFalse(files.fetch_allowed(img, ALLOWED))
+
     def test_referer_or_origin_without_fetch_metadata(self):
         cases = [({}, False), ({"Referer": "http://localhost:8765/#BA-1"}, True),
                  ({"Origin": "http://127.0.0.1:8765"}, True), ({"Referer": "http://evil.test/"}, False),
@@ -49,6 +59,17 @@ class FilesPureTest(unittest.TestCase):
         for bad in (None, "", "/relative", "javascript:alert(1)", "data:text/html,x", "https://"):
             with self.subTest(location=bad):
                 self.assertFalse(files.redirect_ok(bad))
+
+    def test_media_path_and_id(self):
+        self.assertEqual(files.media_path("/files/media/25569"), "/jira/attachment/content/25569")
+        for bad in ("/files/media/", "/files/media/x", "/files/media/1/2", "/files/content/1"):
+            self.assertIsNone(files.media_path(bad))
+        loc = "https://api.media.atlassian.com/file/CEBF256E-58b9-4541-82f2-13ab1ef4a0d2/binary?token=t&dl=true"
+        self.assertEqual(files.media_id(loc), "cebf256e-58b9-4541-82f2-13ab1ef4a0d2")
+        for bad in (None, "", "/file/cebf256e-58b9-4541-82f2-13ab1ef4a0d2/binary", "https://m/file/1/binary",
+                    "https://m/x?u=/file/cebf256e-58b9-4541-82f2-13ab1ef4a0d2/"):
+            with self.subTest(location=bad):
+                self.assertIsNone(files.media_id(bad))
 
     def test_file_headers(self):
         relayed = (("Location", "https://m/x"), ("Content-Disposition", "attachment"))
@@ -126,6 +147,24 @@ class TokenModeFilesTest(AppTestCase):
         self.assertEqual(headers["content-type"], "image/png")
         self.assertEqual(headers["content-disposition"], 'inline; filename="a.png"')
         self.assertNotIn("location", headers)
+
+    def test_media_id_route(self):
+        status, _, body = self.request("GET", "/files/media/10601")
+        self.assertEqual((status, body), (200, b'{"id": "%s"}' % MEDIA_UUID.encode()))
+        (call,) = self.fake.requests  # the redirect was read, not followed
+        self.assertEqual(call["path"], "/rest/api/3/attachment/content/10601")
+        self.assertEqual(self.request("GET", "/files/media/10500")[0], 502)  # redirect without a media id
+        self.assertEqual(self.request("GET", "/files/media/10601", proxy_header=False)[0], 403)
+        self.assertIn(self.request("GET", "/files/media/abc")[0], (403, 404))  # non-numeric: not this route
+        status, headers, body = self.request("GET", "/files/media/10602")  # upstream bytes are never relayed here
+        self.assertEqual((status, headers["content-type"].split(";")[0]), (502, "application/json"))
+
+    def test_no_framing_anywhere(self):
+        for path, proxy in (("/", False), ("/files/media/10601", True), ("/jira/nothing/../x", True)):
+            with self.subTest(path=path):
+                _, headers, _ = self.request("GET", path, proxy_header=proxy)
+                self.assertEqual(headers["x-frame-options"], "DENY")
+                self.assertIn("frame-ancestors 'none'", headers["content-security-policy"])
 
     def test_referer_fallback(self):
         own = "http://127.0.0.1:%d/" % self.port

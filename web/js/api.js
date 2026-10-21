@@ -1,7 +1,7 @@
 // Talks to the local proxy (server.py): /jira/* -> Jira REST v3.
 
 /** Fields fetched for list rows, board cards, search hits and sub-issues. */
-export const FIELDS = ["summary", "status", "priority", "assignee", "updated", "created", "duedate", "labels", "issuetype", "subtasks", "parent"];
+export const FIELDS = ["summary", "status", "priority", "assignee", "updated", "created", "duedate", "labels", "issuetype", "subtasks", "parent", "components"];
 const DETAIL_FIELDS = ["summary", "status", "description", "assignee", "reporter", "priority", "issuetype", "created", "parent", "subtasks"];
 const enc = encodeURIComponent;
 
@@ -100,6 +100,8 @@ export const updateIssue = (key, fields) => request("issue/" + enc(key), { field
 export const assign = (key, accountId) => request("issue/" + enc(key) + "/assignee", { accountId }, "PUT");
 export const addComment = (key, adfBody) => request("issue/" + enc(key) + "/comment", { body: adfBody });
 export const createIssue = (fields) => request("issue", { fields });
+/** Deletes the issue; Jira refuses one with sub-tasks unless `withSubtasks`. */
+export const deleteIssue = (key, withSubtasks) => request("issue/" + enc(key) + (withSubtasks ? "?deleteSubtasks=true" : ""), undefined, "DELETE");
 
 // ---- metadata ----
 export const createMetaTypes = (project) => request("issue/createmeta/" + enc(project) + "/issuetypes").then((r) => r.issueTypes || []);
@@ -118,6 +120,8 @@ const PANEL_FIELDS = ["summary", "status", "description", "assignee", "reporter"
 /** The issue with its newest 100 changelog histories (`issue.changelog.histories`, newest first). */
 export const getIssueDetail = (key, extra = []) =>
   request("issue/" + enc(key) + "?fields=" + [...PANEL_FIELDS, ...extra].join(",") + "&expand=changelog");
+/** What the user may change on the issue: field id -> {name, schema, operations, allowedValues?, required}. */
+export const getEditMeta = (key) => request("issue/" + enc(key) + "/editmeta").then((r) => (r && r.fields) || {});
 export const updateComment = (key, id, adfBody) => request("issue/" + enc(key) + "/comment/" + enc(id), { body: adfBody }, "PUT");
 export const deleteComment = (key, id) => request("issue/" + enc(key) + "/comment/" + enc(id), undefined, "DELETE");
 
@@ -155,6 +159,9 @@ export function uploadAttachments(key, files, onProgress = () => {}) {
     xhr.send(form);
   });
 }
+
+/** The Media Services file id of an attachment (what an ADF media node names), via the server. */
+export const getMediaId = (attachmentId) => request("/files/media/" + enc(attachmentId)).then((r) => r.id);
 
 // ---- lists & navigation ----
 /** All issues matching `jql` with only `fields` (e.g. the sidebar's epic progress), up to `maxPages` pages of 100. */

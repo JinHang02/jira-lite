@@ -61,12 +61,12 @@ export function openMenu(anchor, title, items, onPick, opts = {}) {
  * Opens a free-form popover (its own controls, no item list) under `anchor`, which gets
  * aria-expanded. Only Escape is handled for it (see menuKey); global shortcuts are suppressed
  * while it is open. Returns the popover element.
- * @param opts {label?: string, cls?: string, align?: "start" | "end"}
+ * @param opts {label?: string, cls?: string, align?: "start" | "end", onClose?: () => void}
  */
 export function openPopover(anchor, content, opts = {}) {
   closeMenu();
   const box = el("div", { class: "menu pop " + (opts.cls || ""), role: "dialog", "aria-label": opts.label || null }, content);
-  menu = { box, search: null, buttons: [], idx: 0, popover: true, anchor };
+  menu = { box, search: null, buttons: [], idx: 0, popover: true, anchor, onClose: opts.onClose };
   anchor.setAttribute("aria-expanded", "true");
   document.body.append(box);
   place(box, anchor, opts.align);
@@ -83,9 +83,11 @@ export function hilite(n) {
 
 export function closeMenu() {
   if (!menu) return;
+  const done = menu.onClose;
   if (menu.anchor) menu.anchor.setAttribute("aria-expanded", "false");
   menu.box.remove();
   menu = null;
+  if (done) done();
 }
 
 /**
