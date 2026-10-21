@@ -26,7 +26,7 @@
 /* ---- metadata chips: labels and due date (rows and cards) ---- */
 .labels { display: inline-flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden; }
 /* With the peek panel open the list is too narrow for label pills; due dates and avatars stay. */
-#body:has(> #detail:not([hidden])) #list .labels { display: none; }
+body:not(.dmodal) #body:has(> #detail:not([hidden])) #list .labels { display: none; }
 .pill { display: inline-flex; align-items: center; gap: 5px; height: 20px; min-width: 0; max-width: 132px; padding: 0 7px; flex: none;
   border: 1px solid var(--border); border-radius: 9999px; color: var(--muted); font-size: 11.5px; font-weight: 500; white-space: nowrap; }
 .pill > span { overflow: hidden; text-overflow: ellipsis; }
@@ -62,7 +62,7 @@
 .phint .phsum { display: none; }
 .row > .phint { flex: 0 1000 auto; overflow: hidden; }
 .row > .phint .phkey { overflow: hidden; text-overflow: ellipsis; }
-#body:has(> #detail:not([hidden])) #list .phint { display: none; }
+body:not(.dmodal) #body:has(> #detail:not([hidden])) #list .phint { display: none; }
 .tcard .phint { display: flex; max-width: 100%; margin: -4px 0 8px -6px; }
 .tcard .phint .phsum { display: block; margin-left: 4px; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
 .tcard .phint:hover .phsum { color: inherit; }

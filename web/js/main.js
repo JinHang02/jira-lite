@@ -12,7 +12,7 @@ import { openCreate } from "./create.js";
 import { loadPriorities } from "./meta.js";
 import { installKeyboard } from "./keyboard.js";
 import { bindResize } from "./resize.js";
-import { showAllStatuses } from "./display.js";
+import { showAllStatuses, applyDetailMode } from "./display.js";
 import { oauthMode, showSignIn, requireLogin } from "./auth.js";
 import { REFRESH_MS } from "./sync.js";
 
@@ -35,8 +35,10 @@ function loadMe() {
 
 function startApp() {
   loadPrefs();
+  applyDetailMode();
   bindHeader();
   bindResize();
+  $("#dscrim").addEventListener("click", closeDetail);  // dialog mode: a click outside closes it
   bindSidebar();
   installKeyboard();
   // Every minute, a delta sync (see views.syncList); a full reload every 10 minutes or on r.

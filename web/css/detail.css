@@ -239,3 +239,13 @@ a.atttile:hover { text-decoration: none; background: var(--bg-hover); }
 
 .label { max-width: 100%; min-width: 0; }
 .label .ltext { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- dialog mode (Display › Open issues in › Dialog): the panel floats centred over the list ---- */
+#dscrim { display: none; }
+@media (min-width: 761px) {
+  body.dmodal #body:has(> #detail:not([hidden])) > #dscrim { display: block; position: fixed; inset: 0; z-index: 14; background: var(--overlay); animation: fade .12s var(--ease); }
+  body.dmodal #detail { position: fixed; z-index: 15; top: 5vh; left: 50%; transform: translateX(-50%); width: min(1080px, calc(100vw - 48px)); min-width: 0; max-width: none;
+    height: 90vh; border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-high); overflow: hidden; animation: dpop .15s var(--ease); }
+  body.dmodal #dsplit { display: none; }
+}
+@keyframes dpop { from { opacity: 0; transform: translate(-50%, -4px); } }

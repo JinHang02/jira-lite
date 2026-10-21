@@ -547,12 +547,18 @@ class _Refs(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
         self.refs = []  # type: List[str]
+        self.scripts = []  # type: List[str]
+        self.preloads = []  # type: List[str]
 
     def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
         a = dict(attrs)
         ref = a.get("src") if tag == "script" else a.get("href") if tag == "link" else None
         if ref:
             self.refs.append(ref)
+            if tag == "script":
+                self.scripts.append(ref)
+            elif a.get("rel") == "modulepreload":
+                self.preloads.append(ref)
 
 
 IMPORT_RE = re.compile(r"""(?:^|[;\s])(?:import|export)\s*(?:[^'"]*?\sfrom\s*)?["']([^"']+)["']|import\(\s*["']([^"']+)["']\s*\)""", re.M)
@@ -570,14 +576,16 @@ class StaticTest(E2ETestCase):
         parser = _Refs()
         parser.feed(raw.decode("utf-8"))
         local = [r for r in parser.refs if not re.match(r"^(https?:|data:|//)", r)]
-        self.assertTrue(any(r.endswith(".css") for r in local) and "js/main.js" in local)
+        names = [r.split("?")[0] for r in local]
+        self.assertTrue(any(n.endswith(".css") for n in names) and "js/main.js" in names)
         for ref in local:
             status, ctype, body = self.get("/" + ref)
             self.assertEqual(status, 200, ref)
             self.assertTrue(body, ref)
-            want = "text/css" if ref.endswith(".css") else "text/javascript"
+            css = ref.split("?")[0].endswith(".css")
+            want = "text/css" if css else "text/javascript"
             self.assertEqual(ctype.split(";")[0], want, ref)
-            if ref.endswith(".css"):  # url(...) references inside stylesheets
+            if css:  # url(...) references inside stylesheets
                 for url in re.findall(r"url\(\s*['\"]?([^'\")]+)", body.decode("utf-8")):
                     if not re.match(r"^(https?:|data:|#)", url):
                         target = os.path.normpath(os.path.join(os.path.dirname(ref), url))
@@ -585,12 +593,12 @@ class StaticTest(E2ETestCase):
 
         # Walk the ES module graph from every <script type=module>, fetching each import.
         seen = set()  # type: Set[str]
-        queue = [r for r in local if r.endswith(".js")]
+        queue = [r for r in parser.scripts if not re.match(r"^(https?:|//)", r)]
         while queue:
             mod = queue.pop()
-            if mod in seen:
+            if mod.split("?")[0] in seen:
                 continue
-            seen.add(mod)
+            seen.add(mod.split("?")[0])
             status, ctype, body = self.get("/" + mod)
             self.assertEqual(status, 200, "import %s does not resolve" % mod)
             self.assertEqual(ctype.split(";")[0], "text/javascript", mod)
@@ -601,6 +609,36 @@ class StaticTest(E2ETestCase):
         on_disk = {"js/" + n for n in os.listdir(os.path.join(WEB, "js")) if n.endswith(".js")}
         self.assertEqual(on_disk - seen, set(), "modules under web/js that nothing imports")
         self.assertGreaterEqual(len(seen), 30)
+        # <link rel=modulepreload> lists exactly the module graph (all fetched in parallel at startup).
+        self.assertEqual({p.split("?")[0] for p in parser.preloads}, seen, "index.html modulepreload list is out of date")
+        # Served links and imports carry one ?v= version, so they can be cached for good.
+        versions = {r.split("?v=")[1] if "?v=" in r else None for r in local}
+        self.assertEqual(len(versions), 1, versions)  # one version on every js/css link
+        self.assertNotIn(None, versions)
+
+    def test_versioned_static_files_are_cached_for_good(self) -> None:
+        _, _, raw = self.get("/")
+        v = re.search(r'src="js/main\.js\?v=(\w+)"', raw.decode()).group(1)
+        status, headers, body = self.app("GET", "/js/main.js?v=" + v)
+        self.assertEqual((status, headers["cache-control"]), (200, "public, max-age=31536000, immutable"))
+        self.assertIn('?v=%s"' % v, body.decode())  # its own imports are versioned too
+        self.assertEqual(self.app("GET", "/js/main.js?v=old")[1]["cache-control"], "no-cache")
+        self.assertEqual(self.app("GET", "/")[1]["cache-control"], "no-cache")  # the page always revalidates
+
+    def test_static_files_are_revalidated_with_etags(self) -> None:
+        conn = http.client.HTTPConnection("127.0.0.1", _Env.app.port, timeout=TIMEOUT)
+        try:  # one kept-alive connection for both requests
+            conn.request("GET", "/js/main.js", headers={"Host": "127.0.0.1:%d" % _Env.app.port})
+            r = conn.getresponse()
+            body, tag, cache = r.read(), r.getheader("ETag"), r.getheader("Cache-Control")
+            self.assertEqual((r.status, cache, r.version), (200, "no-cache", 11))
+            self.assertTrue(body and tag)
+            conn.request("GET", "/js/main.js", headers={"Host": "127.0.0.1:%d" % _Env.app.port, "If-None-Match": tag})
+            r = conn.getresponse()
+            self.assertEqual((r.status, r.read(), r.getheader("ETag")), (304, b"", tag))
+        finally:
+            conn.close()
+        self.assertEqual(self.app("GET", "/jira/myself")[1].get("cache-control"), "no-store")  # API answers never cached
 
     def test_static_missing_and_traversal(self) -> None:
         self.assertEqual(self.get("/js/nope.js")[0], 404)

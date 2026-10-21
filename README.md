@@ -32,6 +32,7 @@ A fast, Linear-style web UI for Jira Cloud. It reads and writes your real Jira t
 - **Screenshots in descriptions** — paste (⌘V), drop or pick an image while editing; it's attached and embedded
 - **Image viewer** — click an image to see it full size, ←/→ through the issue's images (like Jira)
 - **Pick the statuses you see** — Display › Statuses: untick Backlog, To Do… to hide them in the list and on the board
+- **Side panel or dialog** — Display › Open issues in: the side panel, or a centred dialog like Jira's
 - **Resizable panel** — drag its left edge (or focus it and use ←/→); double-click to reset
 - **Delete an issue** — trash button in the panel; type `delete` to confirm (sub-tasks go with it)
 - **Issue types at a glance** — type icon on every row and card, epics in purple, `↳ PARENT` link on child issues

@@ -27,6 +27,7 @@ frontend can tell it apart from a 401 relayed from Jira.
 
 import json
 import sys
+import urllib.parse
 from http.server import BaseHTTPRequestHandler
 from typing import TYPE_CHECKING, Iterable, Optional, Tuple
 
@@ -55,6 +56,11 @@ class Handler(BaseHTTPRequestHandler):
     """Thin routing layer; the work happens in :mod:`proxy`, :mod:`auth` and :mod:`static`."""
 
     server: "JiraLiteServer"
+    # Persistent connections: through an SSH tunnel or over the network every new connection
+    # costs a round trip. Safe because every response carries Content-Length (or is 204/304)
+    # and request bodies are always drained.
+    protocol_version = "HTTP/1.1"
+    timeout = 120  # seconds an idle kept-alive connection may hold its thread
 
     # -- HTTP verbs -------------------------------------------------------
     def do_GET(self) -> None:
@@ -76,7 +82,7 @@ class Handler(BaseHTTPRequestHandler):
         elif path.startswith(files.FILE_PREFIX):
             self._file(path)
         else:
-            self._static(path)
+            self._static(path, query)
 
     def do_POST(self) -> None:
         if not (self._host_ok() and self._origin_ok()):
@@ -191,11 +197,21 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_empty(204)
         self._reply(self.server.auth.logout(self.headers.get("Cookie")))
 
-    def _static(self, path: str) -> None:
+    def _static(self, path: str, query: str = "") -> None:
         full = static.resolve(self.server.web_root, path)
         if full is None:
             return self._send(404, b"not found", TEXT)
-        self._send(200, static.read(full), static.content_type(full))
+        # Files asked for with the current ?v= version are cached for good (their URLs change with
+        # any edit, see static.versioned); the page itself and unversioned URLs are revalidated
+        # each load (no-cache), so an unchanged one costs a 304.
+        version = static.app_version(self.server.web_root)
+        asked = urllib.parse.parse_qs(query).get("v", [""])[-1]
+        cache = static.IMMUTABLE if asked == version and not full.endswith(".html") else "no-cache"
+        tag = '"%s-%s"' % (version, static.etag(full).strip('"'))
+        if static.etag_matches(self.headers.get("If-None-Match"), tag):
+            return self._send_empty(304, (("ETag", tag),), cache=cache)
+        body = static.versioned(full, static.read(full), version)
+        self._send(200, body, static.content_type(full), (("ETag", tag),), cache=cache)
 
     # -- helpers ----------------------------------------------------------
     def _read_body(self) -> Optional[bytes]:
@@ -234,11 +250,11 @@ class Handler(BaseHTTPRequestHandler):
         self._send(code, json.dumps(payload).encode(), "application/json")
 
     def _send(self, code: int, data: bytes, ctype: str,
-              headers: Iterable[Tuple[str, str]] = ()) -> None:
+              headers: Iterable[Tuple[str, str]] = (), cache: str = "no-store") -> None:
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", cache)
         self._no_framing()
         for name, value in headers:
             self.send_header(name, value)
@@ -251,10 +267,10 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Content-Security-Policy", "frame-ancestors 'none'")
 
-    def _send_empty(self, code: int, headers: Iterable[Tuple[str, str]] = ()) -> None:
-        """A bodiless response (204 must not carry Content-Length)."""
+    def _send_empty(self, code: int, headers: Iterable[Tuple[str, str]] = (), cache: str = "no-store") -> None:
+        """A bodiless response (204/304 must not carry Content-Length)."""
         self.send_response(code)
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", cache)
         self._no_framing()
         for name, value in headers:
             self.send_header(name, value)

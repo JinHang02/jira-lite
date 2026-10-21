@@ -55,6 +55,7 @@ DEMO-7 and DEMO-26 (Blocked, overdue).
 - [ ] Reload the page with `#DEMO-4` → panel reopens.
 
 - [ ] Image viewer: click an image in the description, a comment or the Attachments list → full-window viewer (no new tab): name, size, "1 of N"; ←/→ and the side arrows switch images; click the image zooms to full size; Download, Open in Jira; Esc or a click outside closes. ⌘-click still opens a tab. Safari: Attachments tiles (non-images) open too (its `cross-site` link clicks pass on the Referer).
+- [ ] Display › Open issues in › Dialog: clicking an issue opens it centred over a dimmed list (≤1080px wide, 90vh, properties column on the right); outside click or Esc closes; the header's dialog/panel button switches modes (remembered). Phones: full screen either way.
 - [ ] Panel resize: drag the left edge → wider/narrower (list keeps ≥ 320 px); reload keeps the width; double-click the edge resets; focused edge + ←/→ resizes. Hidden on phones.
 
 ## Activity

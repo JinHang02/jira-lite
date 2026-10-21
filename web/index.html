@@ -18,6 +18,57 @@
 <link rel="stylesheet" href="css/overlays.css">
 <link rel="stylesheet" href="css/responsive.css">
 <link rel="stylesheet" href="css/auth.css">
+<!-- Every module, fetched in parallel instead of one import level at a time (test_smoke keeps this list exact). -->
+<link rel="modulepreload" href="js/actions.js">
+<link rel="modulepreload" href="js/activity.js">
+<link rel="modulepreload" href="js/adf.js">
+<link rel="modulepreload" href="js/api.js">
+<link rel="modulepreload" href="js/attachments.js">
+<link rel="modulepreload" href="js/attachview.js">
+<link rel="modulepreload" href="js/auth.js">
+<link rel="modulepreload" href="js/board.js">
+<link rel="modulepreload" href="js/bulk.js">
+<link rel="modulepreload" href="js/chips.js">
+<link rel="modulepreload" href="js/create.js">
+<link rel="modulepreload" href="js/cursor.js">
+<link rel="modulepreload" href="js/deleteview.js">
+<link rel="modulepreload" href="js/descimages.js">
+<link rel="modulepreload" href="js/detail.js">
+<link rel="modulepreload" href="js/display.js">
+<link rel="modulepreload" href="js/dom.js">
+<link rel="modulepreload" href="js/edits.js">
+<link rel="modulepreload" href="js/epics.js">
+<link rel="modulepreload" href="js/format.js">
+<link rel="modulepreload" href="js/help.js">
+<link rel="modulepreload" href="js/icons.js">
+<link rel="modulepreload" href="js/issues.js">
+<link rel="modulepreload" href="js/jql.js">
+<link rel="modulepreload" href="js/keyboard.js">
+<link rel="modulepreload" href="js/list.js">
+<link rel="modulepreload" href="js/main.js">
+<link rel="modulepreload" href="js/markdown.js">
+<link rel="modulepreload" href="js/mentionpicker.js">
+<link rel="modulepreload" href="js/mentions.js">
+<link rel="modulepreload" href="js/menu.js">
+<link rel="modulepreload" href="js/meta.js">
+<link rel="modulepreload" href="js/modal.js">
+<link rel="modulepreload" href="js/palette.js">
+<link rel="modulepreload" href="js/people.js">
+<link rel="modulepreload" href="js/priorities.js">
+<link rel="modulepreload" href="js/props.js">
+<link rel="modulepreload" href="js/propsview.js">
+<link rel="modulepreload" href="js/resize.js">
+<link rel="modulepreload" href="js/savedviews.js">
+<link rel="modulepreload" href="js/selection.js">
+<link rel="modulepreload" href="js/shortcuts.js">
+<link rel="modulepreload" href="js/sidebar.js">
+<link rel="modulepreload" href="js/state.js">
+<link rel="modulepreload" href="js/status.js">
+<link rel="modulepreload" href="js/sync.js">
+<link rel="modulepreload" href="js/timeline.js">
+<link rel="modulepreload" href="js/typeicons.js">
+<link rel="modulepreload" href="js/viewer.js">
+<link rel="modulepreload" href="js/views.js">
 <script type="module" src="js/main.js"></script>
 </head>
 <body>
@@ -60,6 +111,7 @@
   <div id="body">
     <div id="list"></div>
     <div id="board" hidden></div>
+    <div id="dscrim" aria-hidden="true"></div>
     <aside id="detail" hidden></aside>
   </div>
 </div>

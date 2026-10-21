@@ -219,8 +219,37 @@ class StaticTest(AppTestCase):
         status, headers, body = self.request("GET", "/", proxy_header=False)
         self.assertEqual((status, body), (200, b"<!doctype html><title>index</title>"))
         self.assertEqual(headers["content-type"], "text/html; charset=utf-8")
-        self.assertEqual(headers["cache-control"], "no-store")
+        self.assertEqual(headers["cache-control"], "no-cache")  # revalidated every load (ETag → 304)
+        self.assertTrue(headers["etag"].startswith('"'))
         self.assertEqual(headers["content-length"], str(len(body)))
+
+    def test_etag_revalidation(self):
+        _, headers, _ = self.request("GET", "/app.js", proxy_header=False)
+        status, h304, body = self.request("GET", "/app.js", proxy_header=False, headers={"If-None-Match": headers["etag"]})
+        self.assertEqual((status, body, h304["etag"]), (304, b"", headers["etag"]))
+        self.assertEqual(self.request("GET", "/app.js", proxy_header=False, headers={"If-None-Match": '"other"'})[0], 200)
+
+    def test_versioned_rewrite(self):
+        from jira_lite.static import versioned
+        js = b'import { a } from "./a.js";\nexport { b } from \'../b.js\';\nimport "./c.js";\nconst x = import("./d.js");\nconst s = "./e.js";'
+        out = versioned("m.js", js, "abc").decode()
+        for spec in ('"./a.js?v=abc"', "'../b.js?v=abc'", '"./c.js?v=abc"', '"./d.js?v=abc"'):
+            self.assertIn(spec, out)
+        self.assertIn('"./e.js"', out)  # a plain string is not an import
+        html = b'<link rel="stylesheet" href="css/a.css"><script type="module" src="js/main.js"></script><a href="https://x/js/y.js">'
+        out = versioned("index.html", html, "v1").decode()
+        self.assertIn('href="css/a.css?v=v1"', out)
+        self.assertIn('src="js/main.js?v=v1"', out)
+        self.assertIn('href="https://x/js/y.js"', out)
+        self.assertEqual(versioned("a.css", b"x", "v1"), b"x")
+
+    def test_etag_matches(self):
+        from jira_lite.static import etag_matches
+        self.assertTrue(etag_matches('"a-1"', '"a-1"'))
+        self.assertTrue(etag_matches('"x", W/"a-1"', '"a-1"'))
+        self.assertTrue(etag_matches("*", '"a-1"'))
+        self.assertFalse(etag_matches(None, '"a-1"'))
+        self.assertFalse(etag_matches('"a-2"', '"a-1"'))
 
     def test_query_string_ignored(self):
         status, _, body = self.request("GET", "/app.js?v=3")

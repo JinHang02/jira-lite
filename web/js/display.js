@@ -14,12 +14,21 @@ const GROUP_LABELS = { status: "Status", assignee: "Assignee", priority: "Priori
 const BOARD_GROUP_LABELS = { status: "None", assignee: "Assignee", priority: "Priority", component: "Component" };
 const ORDER_LABELS = { updated: "Last updated", priority: "Priority", created: "Created" };
 
-/** Sets a Display option (grouping / ordering / showSubProgress / boardEmpty), persists it and re-renders. */
+/** Sets a Display option (grouping / ordering / showSubProgress / boardEmpty / detailMode), persists it and re-renders. */
 export function setDisplay(key, value) {
   state[key] = value;
-  store({ grouping: "grouping", ordering: "ordering", showSubProgress: "subProgress", boardEmpty: "boardEmpty" }[key], typeof value === "boolean" ? (value ? "1" : "0") : value);
+  store({ grouping: "grouping", ordering: "ordering", showSubProgress: "subProgress", boardEmpty: "boardEmpty", detailMode: "detailMode" }[key],
+    typeof value === "boolean" ? (value ? "1" : "0") : value);
+  applyDetailMode();
   actions.renderMain();
 }
+
+/** Issues open in the side panel, or in a centred dialog over the list (body.dmodal, detail.css). */
+export function applyDetailMode() {
+  document.body.classList.toggle("dmodal", state.detailMode === "modal");
+}
+
+const DETAIL_LABELS = { panel: "Side panel", modal: "Dialog" };
 
 /** The project's statuses in board order (or the ones seen on issues if those didn't load). */
 function allStatuses() {
@@ -120,6 +129,7 @@ export function toggleDisplay(anchor, focus = true) {
   const box = openPopover(anchor, [
     select("Grouping", "grouping", board ? BOARD_GROUP_LABELS : GROUP_LABELS),
     select("Ordering", "ordering", ORDER_LABELS),
+    select("Open issues in", "detailMode", DETAIL_LABELS),
     el("div", { class: "dsep" }),
     toggle("Show sub-issue progress", () => state.showSubProgress, () => setDisplay("showSubProgress", !state.showSubProgress)),
     board ? toggle("Show empty columns", () => state.boardEmpty, () => setDisplay("boardEmpty", !state.boardEmpty)) : null,

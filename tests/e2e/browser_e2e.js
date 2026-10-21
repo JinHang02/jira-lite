@@ -347,6 +347,24 @@ async (page) => {
     expect(Math.abs((await page.locator("#detail").evaluate((d) => d.getBoundingClientRect().width)) - w0) < 2, "not reset");
   });
 
+  await check("dialog mode: issue opens centred over the list; outside click / Esc close; header button docks it", async () => {
+    await closePanel();
+    await display((m) => m.locator('select[aria-label="Open issues in"]').selectOption("modal"));
+    await open("DEMO-5");
+    const b = await page.locator("#detail").boundingBox();
+    expect(Math.abs(b.x + b.width / 2 - 720) < 4 && b.height > 600, "not centred " + JSON.stringify(b));
+    expect((await page.locator("#dscrim").evaluate((x) => getComputedStyle(x).display)) === "block", "no backdrop");
+    expect(!(await page.locator("#dsplit").isVisible()), "resize handle shown in dialog mode");
+    await page.mouse.click(20, 450);
+    expect(await page.locator("#detail[hidden]").count(), "outside click didn't close");
+    await open("DEMO-5"); await page.keyboard.press("Escape");
+    expect(await page.locator("#detail[hidden]").count(), "Esc didn't close");
+    await open("DEMO-5");
+    await page.click('#detail .dh button[title="Dock to the side"]');
+    expect((await page.locator("#detail").evaluate((d) => getComputedStyle(d).position)) !== "fixed", "still a dialog");
+    expect((await page.evaluate(() => localStorage.getItem("jl.detailMode"))) === "panel", "mode not remembered");
+  });
+
   // ---- edge cases found by the multi-agent pass ----
   await check("edge: clicking a pick list's field again closes it and saves once", async () => {
     await open("DEMO-5");

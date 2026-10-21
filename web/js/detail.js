@@ -22,13 +22,25 @@ import { renderAttachments, bindDrop } from "./attachview.js";
 import { bindImages } from "./descimages.js";
 import { confirmDelete } from "./deleteview.js";
 import { openViewer } from "./viewer.js";
+import { setDisplay } from "./display.js";
 
 const HASH_SVG = '<path d="M5.25 2.5l-1 9M9.75 2.5l-1 9M2.75 5.25h9M2.25 8.75h9" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>';
 const LINK_SVG = '<path d="M6 8a2.5 2.5 0 0 0 3.5.25l1.75-1.75a2.5 2.5 0 0 0-3.5-3.5l-.75.75M8 6a2.5 2.5 0 0 0-3.5-.25L2.75 7.5a2.5 2.5 0 0 0 3.5 3.5l.75-.75" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>';
+const DIALOG_SVG = '<rect x="2" y="2.5" width="10" height="9" rx="1.75" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M4.5 5.25h5M4.5 7.5h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>';
+const PANEL_SVG = '<rect x="2" y="2.5" width="10" height="9" rx="1.75" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M7.5 2.75v8.5" stroke="currentColor" stroke-width="1.2"/>';
 const TRASH_SVG = '<path d="M2.75 4h8.5M5.5 4V2.75h3V4M3.75 4l.5 7.25h5.5l.5-7.25M5.75 6v3.5M8.25 6v3.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>';
 const OPEN_SVG = '<path d="M8.5 2.5h3v3M11.5 2.5L6.5 7.5M10 8.5v2a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>';
 
 let detailSeq = 0;
+// The last render of recently opened issues (renderDetail's arguments), newest last, so
+// reopening one is instant while loadDetail refreshes it.
+const recent = new Map();
+const RECENT_MAX = 30;
+const remember = (key, args) => {
+  recent.delete(key);
+  recent.set(key, args);
+  if (recent.size > RECENT_MAX) recent.delete(recent.keys().next().value);
+};
 // People picked with @ in each issue's comment composer ("@Name" -> accountId), kept across
 // re-renders like the draft text itself.
 const composerMentions = new Map();
@@ -46,7 +58,10 @@ export function openIssue(key) {
   d.hidden = false;
   bindDrop();
   if (!d.querySelector('.dh[data-key="' + CSS.escape(key) + '"]')) {
-    d.replaceChildren(header(key, issueByKey(key)), el("div", { class: "dscroll" }, el("p", { class: "nodesc" }, "Loading…")));
+    // Seen recently: show that copy at once; loadDetail below swaps in the fresh one.
+    const seen = recent.get(key);
+    if (seen) renderDetail(...seen);
+    else d.replaceChildren(header(key, issueByKey(key)), el("div", { class: "dscroll" }, el("p", { class: "nodesc" }, "Loading…")));
   }
   loadDetail();
 }
@@ -117,8 +132,11 @@ export async function loadDetail() {
     const histories = log.histories || [];
     state.known.set(issue.key, issue);
     for (const c of children) state.known.set(c.key, c);
-    renderDetail(issue, comments, children, { customs, meta, histories, olderHidden: Math.max(0, (log.total || 0) - histories.length) });
+    const args = [issue, comments, children, { customs, meta, histories, olderHidden: Math.max(0, (log.total || 0) - histories.length) }];
+    remember(issue.key, args);
+    renderDetail(...args);
   } catch (e) {
+    recent.delete(key);  // e.g. deleted meanwhile: don't show it again from memory
     if (!stale()) {
       $("#detail").replaceChildren(header(key), el("div", { class: "dscroll" }, el("p", { style: "color:var(--err)" }, e.message)));
     }
@@ -156,6 +174,21 @@ function crumbs(issue) {
   return box;
 }
 
+/** Switches between the side panel and the dialog (also in Display › Open issues in). */
+function modeBtn() {
+  const modal = () => state.detailMode === "modal";
+  const b = el("button", { class: "btn icon dmode", type: "button" });
+  const paint = () => {
+    const t = modal() ? "Dock to the side" : "Open as a dialog";
+    b.title = t;
+    b.setAttribute("aria-label", t);
+    b.replaceChildren(icon(14, modal() ? PANEL_SVG : DIALOG_SVG, ""));
+  };
+  b.addEventListener("click", () => { setDisplay("detailMode", modal() ? "panel" : "modal"); paint(); });
+  paint();
+  return b;
+}
+
 /** Panel header: breadcrumb (once the issue is loaded), copy key/link, open in Jira, delete, close. */
 function header(key, issue) {
   const iconBtn = (title, svg, onclick) => {
@@ -170,6 +203,7 @@ function header(key, issue) {
     iconBtn("Copy link", LINK_SVG, () => copyText(browseUrl(key), "link to " + key)),
     el("a", { class: "btn icon", href: browseUrl(key), target: "_blank", rel: "noopener", title: "Open in Jira", "aria-label": "Open in Jira" }, icon(14, OPEN_SVG, "")),
     iconBtn("Delete issue…", TRASH_SVG, () => confirmDelete(key)),
+    modeBtn(),
     el("span", { class: "dhsep" }),
     el("button", { class: "btn icon", type: "button", title: "Close (esc)", "aria-label": "Close", onclick: closeDetail }, icon(14, ICONS.close, "")));
 }
