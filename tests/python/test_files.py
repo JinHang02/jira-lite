@@ -5,8 +5,8 @@ import http.client
 import unittest
 import urllib.request
 
-from jira_lite import files
-from jira_lite.proxy import MAX_BODY, JiraProxy, no_redirect_opener, outgoing
+from app import files
+from app.proxy import MAX_BODY, JiraProxy, no_redirect_opener, outgoing
 
 from .atlassian_fake import CLOUD_ID, OAuthAppTestCase
 from .support import MEDIA_PATH, MEDIA_UUID, PNG_BYTES, AppTestCase, FakeJira, start, stop

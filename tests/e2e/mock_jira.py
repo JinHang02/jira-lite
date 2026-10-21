@@ -1981,8 +1981,8 @@ class MockJiraServer(ThreadingHTTPServer):
 def _serve_app(mock_url: str, project: str, port: int) -> Any:
     """Starts jira-lite (token mode) against the mock, bypassing .env entirely."""
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    from jira_lite.app import create_server
-    from jira_lite.config import Settings
+    from app.app import create_server
+    from app.config import Settings
     settings = Settings(site=mock_url, email="dev@example.com", token="mock-token", project=project, port=port)
     app = create_server(settings)
     threading.Thread(target=app.serve_forever, daemon=True).start()

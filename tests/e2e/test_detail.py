@@ -15,8 +15,8 @@ import unittest
 import urllib.parse
 from typing import Any, Dict, List, Optional, Tuple
 
-from jira_lite.app import create_server
-from jira_lite.config import Settings
+from app.app import create_server
+from app.config import Settings
 from tests.e2e import mock_jira as mj
 
 PROJECT = "DEMO"

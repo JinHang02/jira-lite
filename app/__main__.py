@@ -1,4 +1,4 @@
-"""Command-line entry point: ``python3 -m jira_lite``.
+"""Command-line entry point: ``python3 -m app``.
 
 Loads settings, binds JIRA_LITE_BIND:PORT (default 127.0.0.1; HTTPS when a
 certificate is configured) and serves until Ctrl+C. In OAuth mode sign-in

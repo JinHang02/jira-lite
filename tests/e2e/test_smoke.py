@@ -19,8 +19,8 @@ import unittest
 from html.parser import HTMLParser
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from jira_lite.app import create_server
-from jira_lite.config import Settings
+from app.app import create_server
+from app.config import Settings
 from tests.e2e import mock_jira as mj
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -642,7 +642,7 @@ class StaticTest(E2ETestCase):
 
     def test_static_missing_and_traversal(self) -> None:
         self.assertEqual(self.get("/js/nope.js")[0], 404)
-        self.assertEqual(self.get("/%2e%2e/jira_lite/config.py")[0], 404)
+        self.assertEqual(self.get("/%2e%2e/app/config.py")[0], 404)
 
 
 if __name__ == "__main__":

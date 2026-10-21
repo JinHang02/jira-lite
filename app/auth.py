@@ -138,9 +138,9 @@ class OAuthService:
     def forward(self, method: str, request_path: str, body: Optional[bytes],
                 cookie_header: Optional[str], content_type: Optional[str] = None) -> ProxyResponse:
         """Proxy ``/jira/<rest>`` as the signed-in user (``content_type``: the browser's, see
-        :func:`~jira_lite.proxy.outgoing`).
+        :func:`~app.proxy.outgoing`).
 
-        Raises :class:`~jira_lite.proxy.UnsafePathError`, ``LookupError``
+        Raises :class:`~app.proxy.UnsafePathError`, ``LookupError``
         (not a proxy path) or :class:`LoginRequired`."""
         rel = upstream_url("", request_path)  # "/rest/api/3/<rest>"; validates the path first
         if rel is None:

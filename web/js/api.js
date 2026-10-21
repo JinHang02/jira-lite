@@ -1,4 +1,4 @@
-// Talks to the local proxy (server.py): /jira/* -> Jira REST v3.
+// Talks to the local proxy (app/): /jira/* -> Jira REST v3.
 
 /** Fields fetched for list rows, board cards, search hits and sub-issues. */
 export const FIELDS = ["summary", "status", "priority", "assignee", "updated", "created", "duedate", "labels", "issuetype", "subtasks", "parent", "components"];

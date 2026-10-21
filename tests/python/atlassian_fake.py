@@ -16,9 +16,9 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Dict, List, Optional, Tuple
 
-from jira_lite.app import create_server
-from jira_lite.config import Settings
-from jira_lite.sessions import SessionStore
+from app.app import create_server
+from app.config import Settings
+from app.sessions import SessionStore
 
 from .support import make_web_root, start, stop
 

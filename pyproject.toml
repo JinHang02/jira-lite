@@ -15,4 +15,4 @@ classifiers = [
 ]
 
 [tool.setuptools]
-packages = ["jira_lite"]
+packages = ["app"]

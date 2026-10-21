@@ -1,4 +1,4 @@
-"""Unit tests for jira_lite.proxy with an injected opener (no network)."""
+"""Unit tests for app.proxy with an injected opener (no network)."""
 
 import io
 import json
@@ -7,7 +7,7 @@ import unittest
 import urllib.error
 from email.message import Message
 
-from jira_lite.proxy import JiraProxy, UnsafePathError, match_prefix, upstream_url
+from app.proxy import JiraProxy, UnsafePathError, match_prefix, upstream_url
 
 SITE = "https://x.atlassian.net"
 

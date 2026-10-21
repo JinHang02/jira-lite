@@ -1,11 +1,11 @@
-"""Tests for jira_lite.config: .env parsing, overrides and validation."""
+"""Tests for app.config: .env parsing, overrides and validation."""
 
 import os
 import shutil
 import tempfile
 import unittest
 
-from jira_lite.config import (ConfigError, Settings, load_settings, merge_env,
+from app.config import (ConfigError, Settings, load_settings, merge_env,
                               parse_env, read_env_file, settings_from_env)
 
 FULL = {"JIRA_SITE": "https://x.atlassian.net", "JIRA_EMAIL": "a@b.c", "JIRA_TOKEN": "t"}

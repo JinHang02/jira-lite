@@ -1,10 +1,10 @@
-"""Unit tests for jira_lite.static path resolution and content types."""
+"""Unit tests for app.static path resolution and content types."""
 
 import os
 import shutil
 import unittest
 
-from jira_lite import static
+from app import static
 
 from .support import make_web_root
 

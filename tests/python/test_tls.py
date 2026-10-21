@@ -9,8 +9,8 @@ import tempfile
 import threading
 import unittest
 
-from jira_lite.app import create_server
-from jira_lite.config import Settings
+from app.app import create_server
+from app.config import Settings
 
 from .support import make_web_root
 

@@ -11,7 +11,7 @@ Routes:
                                :mod:`files`)
   GET  anything else         -> static file from the web root
 
-Request bodies over :data:`~jira_lite.proxy.MAX_BODY` bytes are refused with 413 before
+Request bodies over :data:`~app.proxy.MAX_BODY` bytes are refused with 413 before
 they are read.
 
 Every request must carry an allowed ``Host`` (``localhost:PORT``,

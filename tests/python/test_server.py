@@ -230,7 +230,7 @@ class StaticTest(AppTestCase):
         self.assertEqual(self.request("GET", "/app.js", proxy_header=False, headers={"If-None-Match": '"other"'})[0], 200)
 
     def test_versioned_rewrite(self):
-        from jira_lite.static import versioned
+        from app.static import versioned
         js = b'import { a } from "./a.js";\nexport { b } from \'../b.js\';\nimport "./c.js";\nconst x = import("./d.js");\nconst s = "./e.js";'
         out = versioned("m.js", js, "abc").decode()
         for spec in ('"./a.js?v=abc"', "'../b.js?v=abc'", '"./c.js?v=abc"', '"./d.js?v=abc"'):
@@ -244,7 +244,7 @@ class StaticTest(AppTestCase):
         self.assertEqual(versioned("a.css", b"x", "v1"), b"x")
 
     def test_etag_matches(self):
-        from jira_lite.static import etag_matches
+        from app.static import etag_matches
         self.assertTrue(etag_matches('"a-1"', '"a-1"'))
         self.assertTrue(etag_matches('"x", W/"a-1"', '"a-1"'))
         self.assertTrue(etag_matches("*", '"a-1"'))

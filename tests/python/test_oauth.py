@@ -6,9 +6,9 @@ import time
 import unittest
 import urllib.parse
 
-from jira_lite.app import oauth_service
-from jira_lite.config import Settings
-from jira_lite.handler import redact_request_line
+from app.app import oauth_service
+from app.config import Settings
+from app.handler import redact_request_line
 
 from .atlassian_fake import (ACCOUNT_ID, BASE_URL, CLIENT_ID, CLIENT_SECRET, CLOUD_ID, DISPLAY_NAME,
                              GOOD_CODE, SITE, OAuthAppTestCase)

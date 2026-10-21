@@ -16,8 +16,8 @@ import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Dict, List, Optional, Tuple
 
-from jira_lite.app import create_server
-from jira_lite.config import Settings
+from app.app import create_server
+from app.config import Settings
 
 SLOW_SECONDS = 2.0  # how long the fake's /slow endpoint stalls
 PROXY_TIMEOUT = 0.5  # proxy timeout used by the app under test

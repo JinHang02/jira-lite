@@ -11,7 +11,7 @@ Hard constraints the user chose: **no dependencies and no build step**. Backend 
 ## Commands
 
 ```sh
-make run                      # python3 -m jira_lite  (http://localhost:8765; PORT=... to change)
+make run                      # python3 -m app  (http://localhost:8765; PORT=... to change)
 make test                     # both suites
 make test-py                  # python3 -m unittest discover -s tests/python -t .
 make test-js                  # node --test tests/js/*.test.mjs   (Node 26 rejects a bare directory)
@@ -28,17 +28,17 @@ python3 tests/e2e/mock_jira.py --port 9900 --log /tmp/jira.jsonl --latency-ms 30
 ```
 `tests/e2e/CHECKLIST.md` lists every UI flow with its expected result (manual / Playwright). JQL or endpoints the mock doesn't know answer 400/404 with an `errorMessages` entry — extend `mock_jira.py` when the frontend starts sending something new.
 
-`python3 server.py` is a shim for `python3 -m jira_lite`. Config lives in `.env` (see `.env.example`); `JIRA_*`/`JIRA_LITE_*` process env vars override it, `PORT` comes from the environment only.
+Config lives in `.env` (see `.env.example`); `JIRA_*`/`JIRA_LITE_*` process env vars override it, `PORT` comes from the environment only.
 
 ## Architecture
 
-**Request flow:** browser → `jira_lite` server → `/jira/<rest>` is forwarded to Jira REST v3; `/config` returns non-secret settings (incl. `auth`); everything else is a static file from `web/`.
+**Request flow:** browser → `app` server → `/jira/<rest>` is forwarded to Jira REST v3; `/config` returns non-secret settings (incl. `auth`); everything else is a static file from `web/`.
 
 **Two auth modes** (chosen in `config.py`): *token mode* (no `ATLASSIAN_CLIENT_ID`) forwards to `{JIRA_SITE}/rest/api/3/` with one person's Basic-auth API token and may only bind to loopback. *OAuth mode* (`ATLASSIAN_CLIENT_ID` set) is per-user "Sign in with Atlassian" (OAuth 2.0 3LO): `auth.py` handles `/oauth/login`, `/oauth/callback`, `/auth/me`, `/auth/logout` and proxies to `https://api.atlassian.com/ex/jira/{cloudId}/rest/api/3/` with each session's Bearer token; `oauth.py` talks to Atlassian; `sessions.py` is an in-memory store (restart signs everyone out). Refresh tokens rotate, so refreshes run under a per-session lock — never refresh outside it. A missing/expired session answers 401 with header `X-Jira-Lite-Auth: login`, which the frontend (`auth.js`) turns into the sign-in screen. Network binding (`JIRA_LITE_BIND=0.0.0.0`) is only allowed in OAuth mode with TLS; `JIRA_LITE_BASE_URL` must equal the callback origin registered in the Atlassian developer console.
 
 **Rate limit:** OAuth apps share ~65k points/hour across all users (≈1 point per returned issue), so auto-refresh is a delta sync (`sync.js`: `updated >= -Nm`, merged client-side with `matchesView`), with a full reload only on filter changes, manual refresh and every 10 min. Don't reintroduce periodic full reloads. `/priority/search` needs an admin scope under OAuth; priorities come from createmeta (`priorities.js`, `meta.js`).
 
-**Backend (`jira_lite/`)** — `config.py` parses/validates settings into a frozen `Settings` (raises `ConfigError`; only `__main__.py` turns that into exit codes). `app.py` builds a `ThreadingHTTPServer` subclass that carries settings, the proxy and the web root, and optionally wraps the socket in TLS (handshake deferred to worker threads). `handler.py` is thin routing; the logic is in `proxy.py` (URL mapping + forwarding with an injectable opener) and `static.py` (realpath-contained file serving).
+**Backend (`app/`)** — `config.py` parses/validates settings into a frozen `Settings` (raises `ConfigError`; only `__main__.py` turns that into exit codes). `app.py` builds a `ThreadingHTTPServer` subclass that carries settings, the proxy and the web root, and optionally wraps the socket in TLS (handshake deferred to worker threads). `handler.py` is thin routing; the logic is in `proxy.py` (URL mapping + forwarding with an injectable opener) and `static.py` (realpath-contained file serving).
 
 Security invariants that tests enforce — keep them when changing the server:
 - Every request's `Host` must be in `allowed_hosts` (localhost/127.0.0.1 + `JIRA_LITE_PUBLIC_HOSTS`, with port) — DNS-rebinding protection.

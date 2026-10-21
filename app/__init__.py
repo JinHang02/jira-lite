@@ -5,7 +5,7 @@ The package serves the single-page frontend from ``web/`` and proxies
 side: either one shared API token, or per-user "Sign in with Atlassian"
 (OAuth 2.0 3LO) sessions. Standard library only.
 
-Run with ``python3 -m jira_lite`` (or ``python3 server.py``).
+Run with ``python3 -m app`` (or ``make run``).
 """
 
 __version__ = "0.2.0"

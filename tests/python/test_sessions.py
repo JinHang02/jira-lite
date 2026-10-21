@@ -1,9 +1,9 @@
-"""Unit tests for jira_lite.sessions and jira_lite.cookies."""
+"""Unit tests for app.sessions and app.cookies."""
 
 import unittest
 
-from jira_lite.cookies import expire_cookie, parse_cookies, set_cookie
-from jira_lite.sessions import Session, SessionStore
+from app.cookies import expire_cookie, parse_cookies, set_cookie
+from app.sessions import Session, SessionStore
 
 
 class Clock:

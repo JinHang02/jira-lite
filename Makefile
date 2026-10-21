@@ -1,7 +1,7 @@
 .PHONY: run test test-py test-js test-e2e dev-mock cert
 
 run:            ## Start the server on http://localhost:8765 (PORT=... to change)
-	python3 -m jira_lite
+	python3 -m app
 
 test: test-py test-js test-e2e  ## Run all tests
 

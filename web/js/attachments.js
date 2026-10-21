@@ -1,7 +1,7 @@
 // Pure helpers for attachments: same-origin file URLs, sizes, kinds, matching ADF media nodes to
 // the issue's attachments, and upload limits. No DOM access.
 
-/** The server refuses request bodies over 25 MB (jira_lite/proxy.py MAX_BODY). */
+/** The server refuses request bodies over 25 MB (app/proxy.py MAX_BODY). */
 export const MAX_BODY = 25 * 1024 * 1024;
 /** Room left for the multipart framing around the files. */
 const FRAMING = 64 * 1024;
