@@ -6,6 +6,7 @@ import { el, icon, ICONS, toast } from "./dom.js";
 import { ago } from "./format.js";
 import { avatar, statusIcon } from "./icons.js";
 import { statusKind } from "./status.js";
+import { labelHue } from "./issues.js";
 import { dayText } from "./activity.js";
 import { fieldText, localDay, dueState, parseLabels, parentAllowed, epicTypeName, epicJql, filterEpics } from "./props.js";
 import { updateFields } from "./edits.js";
@@ -41,7 +42,7 @@ function labelsEditor(key, labels) {
   for (const l of labels) {
     const x = el("button", { class: "lx", type: "button", title: "Remove label " + l, "aria-label": "Remove label " + l }, icon(14, ICONS.close, ""));
     x.addEventListener("click", () => { if (!state.busy) save(labels.filter((y) => y !== l), key + ": removed label " + l); });
-    box.append(el("span", { class: "label" }, el("span", { class: "ldot" }), l, x));
+    box.append(el("span", { class: "label" }, el("span", { class: "ldot", style: "--h:" + labelHue(l) }), l, x));
   }
   const add = el("button", { class: "ladd", type: "button", title: "Add labels", "aria-label": "Add labels" },
     icon(14, ICONS.plus, ""), labels.length ? null : "Add label");
