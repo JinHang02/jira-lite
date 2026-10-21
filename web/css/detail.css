@@ -270,4 +270,13 @@ a.atttile:hover { text-decoration: none; background: var(--bg-hover); }
 .ldots i:nth-child(2) { animation-delay: .15s; }
 .ldots i:nth-child(3) { animation-delay: .3s; }
 @keyframes ldot { 0%, 60%, 100% { opacity: .25; transform: none; } 30% { opacity: 1; transform: translateY(-2px); } }
-@media (prefers-reduced-motion: reduce) { .buddy .logo, .buddy .eye, .bshadow, .ldots i { animation: none; } }
+/* or it rises from behind a line, glances left and right, and ducks back down */
+.peek { position: relative; width: 70px; height: 46px; overflow: hidden; border-bottom: 2px solid var(--border); }
+.peek .logo { position: absolute; left: 15px; bottom: -36px; animation: peek 2.8s var(--ease) infinite; }
+.peek .eye { transform-box: fill-box; transform-origin: center; animation: look 2.8s var(--ease) infinite, blink 3.2s infinite; }
+@keyframes peek { 0%, 100% { transform: translateY(0); } 18%, 82% { transform: translateY(-26px); } }
+@keyframes look { 0%, 28% { translate: 0 0; } 38%, 50% { translate: -1.5px 0; } 60%, 72% { translate: 1.5px 0; } 82%, 100% { translate: 0 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .buddy .logo, .dload .eye, .bshadow, .ldots i { animation: none; }
+  .peek .logo { animation: none; transform: translateY(-26px); }
+}

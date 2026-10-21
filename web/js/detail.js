@@ -66,10 +66,14 @@ export function openIssue(key) {
   loadDetail();
 }
 
-/** First-open placeholder: the logo hopping (CSS keeps it hidden for 150 ms so quick loads don't flash). */
-const loader = (key) => el("div", { class: "dload", role: "status", "aria-label": "Loading " + key },
-  el("div", { class: "buddy", "aria-hidden": "true" }, el("span", { class: "bshadow" }), logo(40)),
-  el("div", { class: "ltext", "aria-hidden": "true" }, "Fetching " + key, el("span", { class: "ldots" }, el("i"), el("i"), el("i"))));
+/** First-open placeholder: the logo hops or peeks, 50/50 (CSS keeps it hidden for 150 ms so quick loads don't flash). */
+function loader(key) {
+  const peek = Math.random() < 0.5;
+  return el("div", { class: "dload", role: "status", "aria-label": "Loading " + key },
+    peek ? el("div", { class: "peek", "aria-hidden": "true" }, logo(40))
+      : el("div", { class: "buddy", "aria-hidden": "true" }, el("span", { class: "bshadow" }), logo(40)),
+    el("div", { class: "ltext", "aria-hidden": "true" }, (peek ? "Looking for " : "Fetching ") + key, el("span", { class: "ldots" }, el("i"), el("i"), el("i"))));
+}
 
 export function closeDetail() {
   state.current = null;
