@@ -71,9 +71,12 @@ export function groupIcon(g) {
   return null;
 }
 
-// The app's mark: a mirrored "jl" monogram on an accent tile (24-unit grid; the tile takes currentColor).
-const LOGO = '<rect width="24" height="24" rx="6" fill="currentColor"/><g fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round">' +
-  '<path d="M10 10.5v5a3.5 3.5 0 0 1-3.5 3.5"/><path d="M14 5v10.5a3.5 3.5 0 0 0 3.5 3.5"/></g><circle cx="10" cy="6.5" r="1.6" fill="#fff"/>';
+// The app's mark: a ticket with a face (24-unit grid; the body takes currentColor). The
+// detail panel's loader animates the same drawing, so `.eye` classes are part of the API.
+const LOGO = '<path fill="currentColor" d="M6 3.5h12a5 5 0 0 1 5 5V11a2.4 2.4 0 0 0 0 4.8v.7a5 5 0 0 1-5 5H6a5 5 0 0 1-5-5v-.7A2.4 2.4 0 0 0 1 11V8.5a5 5 0 0 1 5-5z"/>' +
+  '<g fill="#ff8fab" opacity=".6"><circle cx="6.5" cy="16.6" r="1.8"/><circle cx="17.5" cy="16.6" r="1.8"/></g>' +
+  '<g fill="#fff"><rect class="eye" x="7.2" y="8.6" width="3" height="4.4" rx="1.5"/><rect class="eye" x="13.8" y="8.6" width="3" height="4.4" rx="1.5"/></g>' +
+  '<path d="M9.7 14.6a2.3 2.1 0 0 0 4.6 0" fill="none" stroke="#fff" stroke-width="1.4" stroke-linecap="round"/>';
 
 /** The jira-lite logo at `size` px (sidebar 20, sign-in 40); `cls` adds classes after "logo". */
 export function logo(size, cls = "") {

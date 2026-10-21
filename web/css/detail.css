@@ -249,3 +249,25 @@ a.atttile:hover { text-decoration: none; background: var(--bg-hover); }
   body.dmodal #dsplit { display: none; }
 }
 @keyframes dpop { from { opacity: 0; transform: translate(-50%, -4px); } }
+
+/* ---- first-open loader: the logo hops, blinks, and its shadow shrinks as it jumps ---- */
+.dload { display: flex; flex-direction: column; align-items: center; gap: 12px; padding-top: 18vh; color: var(--muted); font-size: 12.5px; }
+.dload > * { opacity: 0; animation: lin .25s var(--ease) .15s forwards; }  /* nothing for 150 ms, so quick loads don't flash */
+@keyframes lin { to { opacity: 1; } }
+.buddy { position: relative; width: 48px; height: 52px; }
+.buddy .logo { position: absolute; left: 4px; bottom: 0; transform-origin: 50% 90%; animation: hop .9s infinite; }
+.buddy .eye { transform-box: fill-box; transform-origin: center; animation: blink 3.2s infinite; }
+.bshadow { position: absolute; left: 10px; bottom: 1px; width: 28px; height: 6px; border-radius: 50%; background: var(--skel); animation: bshadow .9s ease-in-out infinite; }
+@keyframes hop {
+  0%, 100% { transform: translateY(0) scale(1.14, .84); }
+  14% { transform: translateY(0) scale(1, 1); animation-timing-function: cubic-bezier(.2, .7, .4, 1); }
+  50% { transform: translateY(-16px) scale(.95, 1.06); animation-timing-function: cubic-bezier(.6, 0, .8, .3); }
+  86% { transform: translateY(0) scale(1, 1); }
+}
+@keyframes bshadow { 50% { transform: scaleX(.55); opacity: .5; } }
+@keyframes blink { 0%, 90%, 100% { transform: scaleY(1); } 94% { transform: scaleY(.15); } }
+.ldots i { display: inline-block; width: 3px; height: 3px; margin-left: 2px; border-radius: 50%; background: currentColor; animation: ldot 1.2s infinite; }
+.ldots i:nth-child(2) { animation-delay: .15s; }
+.ldots i:nth-child(3) { animation-delay: .3s; }
+@keyframes ldot { 0%, 60%, 100% { opacity: .25; transform: none; } 30% { opacity: 1; transform: translateY(-2px); } }
+@media (prefers-reduced-motion: reduce) { .buddy .logo, .buddy .eye, .bshadow, .ldots i { animation: none; } }

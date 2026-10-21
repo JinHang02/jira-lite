@@ -4,7 +4,7 @@ import { state, stash, unstash, issueByKey } from "./state.js";
 import { $, el, icon, ICONS, toast } from "./dom.js";
 import { childrenJql } from "./jql.js";
 import { progress } from "./issues.js";
-import { statusIcon, prioIcon, avatar } from "./icons.js";
+import { statusIcon, prioIcon, avatar, logo } from "./icons.js";
 import { renderAdf, textToAdf, copyText } from "./adf.js";
 import { toMarkdown, fromMarkdown } from "./markdown.js";
 import { isImage } from "./attachments.js";
@@ -61,10 +61,15 @@ export function openIssue(key) {
     // Seen recently: show that copy at once; loadDetail below swaps in the fresh one.
     const seen = recent.get(key);
     if (seen) renderDetail(...seen);
-    else d.replaceChildren(header(key, issueByKey(key)), el("div", { class: "dscroll" }, el("p", { class: "nodesc" }, "Loading…")));
+    else d.replaceChildren(header(key, issueByKey(key)), el("div", { class: "dscroll" }, loader(key)));
   }
   loadDetail();
 }
+
+/** First-open placeholder: the logo hopping (CSS keeps it hidden for 150 ms so quick loads don't flash). */
+const loader = (key) => el("div", { class: "dload", role: "status", "aria-label": "Loading " + key },
+  el("div", { class: "buddy", "aria-hidden": "true" }, el("span", { class: "bshadow" }), logo(40)),
+  el("div", { class: "ltext", "aria-hidden": "true" }, "Fetching " + key, el("span", { class: "ldots" }, el("i"), el("i"), el("i"))));
 
 export function closeDetail() {
   state.current = null;
