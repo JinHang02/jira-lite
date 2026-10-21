@@ -46,7 +46,8 @@
   .gh { padding: 0 12px 0 8px; }
 
   #board { padding: 8px; }
-  .col, .swimhead > .colh, .swimcell { width: min(264px, 80vw); }
+  .col, .swimhead > .colh, .swimcell { width: min(264px, 80vw); flex: none; }  /* phone: fixed columns, the board scrolls */
+  .swimhead, .swimlane { width: max-content; min-width: 100%; }
   #board.swim:not([hidden]) { padding: 0 8px 24px; }
 
   #detail { position: fixed; inset: 0; z-index: 5; width: auto; min-width: 0; max-width: none; border: 0; }

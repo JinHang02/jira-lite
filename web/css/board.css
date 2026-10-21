@@ -1,7 +1,8 @@
 /* ---- board ---- */
 #board { flex: 1; min-width: 0; display: flex; gap: 8px; padding: 12px; overflow-x: auto; overflow-y: hidden; }
 #board[hidden], #list[hidden] { display: none !important; }  /* never let a view rule (e.g. .swim) show the other view */
-.col { width: 248px; flex: none; display: flex; flex-direction: column; max-height: 100%; border-radius: 10px; background: var(--bg-group); }
+/* Columns share the board's width equally and shrink to fit (no horizontal scroll); swimlane header + cells use the same rule so they stay aligned. */
+.col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; max-height: 100%; border-radius: 10px; background: var(--bg-group); }
 .col.drop { outline: 2px dashed var(--accent); outline-offset: -2px; }
 .colh { display: flex; align-items: center; gap: 8px; height: 40px; flex: none; padding: 0 12px; font-weight: 500; color: var(--title); }
 .colh .cname { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -15,7 +16,14 @@
 .tcard .t { margin: 4px 0 8px; color: var(--title); font-weight: 500; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .tcard .bot { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-height: 20px; }
 .tcard .bot .labels { flex-wrap: wrap; }
-.tcard .pill { max-width: 112px; }
+.tcard .pill { max-width: min(112px, 100%); }
+/* Narrow columns (many statuses, panel open): titles wrap anywhere, the key and chips truncate, the rest is clipped to the card. */
+.tcard { overflow: hidden; flex: none; }  /* flex: none: clipping would otherwise let crowded columns squash cards */
+.tcard .top { flex-wrap: wrap; }  /* the key drops under the type icon rather than vanish */
+.tcard .top > span:not(.tbadge):not(.spacer) { max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.tcard .t { overflow-wrap: anywhere; }
+.tcard .phint { overflow: hidden; }
+.tcard .due { flex: 0 1 auto; min-width: 0; overflow: hidden; }
 
 
 /* Multi-select: the checkbox covers the priority icon on hover / while selecting. */
@@ -26,9 +34,9 @@
 
 /* ---- swimlanes (Display › Grouping other than status) ---- */
 #board.swim:not([hidden]) { display: block; overflow: auto; padding: 0 12px 24px; }  /* :not([hidden]): List view must still hide it */
-.swimhead { position: sticky; top: 0; z-index: 2; display: flex; gap: 8px; width: max-content; min-width: 100%; padding: 12px 0 4px; background: var(--bg); }
-.swimhead > .colh { width: 248px; flex: none; height: 36px; border-radius: 10px; background: var(--bg-group); }
-.swimlane { width: max-content; min-width: 100%; margin-top: 8px; }
+.swimhead { position: sticky; top: 0; z-index: 2; display: flex; gap: 8px; padding: 12px 0 4px; background: var(--bg); }
+.swimhead > .colh { flex: 1 1 0; min-width: 0; height: 36px; border-radius: 10px; background: var(--bg-group); }
+.swimlane { margin-top: 8px; }
 .swimh { position: sticky; left: 0; display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px 0 4px; border-radius: 7px;
   color: var(--title); font-weight: 500; cursor: pointer; user-select: none; }
 .swimh:hover { background: var(--bg-hover); }
@@ -36,5 +44,5 @@
 .swimh .av { width: 16px; height: 16px; font-size: 7.5px; }
 .swimh.closed .chev { transform: rotate(-90deg); }
 .swimrow { display: flex; gap: 8px; }
-.swimcell { width: 248px; flex: none; display: flex; flex-direction: column; gap: 6px; min-height: 52px; padding: 6px; border-radius: 10px; background: var(--bg-group); }
+.swimcell { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 6px; min-height: 52px; padding: 6px; border-radius: 10px; background: var(--bg-group); }
 .swimcell.drop { outline: 2px dashed var(--accent); outline-offset: -2px; }

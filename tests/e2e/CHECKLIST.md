@@ -38,6 +38,7 @@ DEMO-7 and DEMO-26 (Blocked, overdue).
 - [ ] ⌘B (or Board) shows columns Backlog › To Do › In Progress › Blocked › In Review (+Done/Canceled when shown); empty columns hidden; Display › Show empty columns (board only) shows them, remembered. No chips after the last column.
 - [ ] Drag DEMO-9 (To Do) to In Progress → toast "DEMO-9 → In Progress", card moves; mock got `POST …/DEMO-9/transitions {"transition":{"id":"31"}}`.
 - [ ] Drag a To Do card to Done → error toast "can't move from To Do to Done directly in this workflow"; nothing sent.
+- [ ] Columns share the board's width equally at desktop widths (1440 and 2000 wide; 2, 5 or all 7 columns with Show empty columns; plain and grouped by Component): no gap on the right and no horizontal scroll (`#board` scrollWidth ≤ clientWidth); swimlane header cells line up with every lane's cells. Narrow columns (all statuses + panel open) wrap titles and truncate key/chips inside the card; no card gets squashed. Phone width keeps fixed 264px columns that scroll sideways.
 - [ ] Display › Statuses › tick Done → completed issues are fetched (search JQL without `statusCategory != Done`), the Done column/group appears and is scrolled to; untick it (the last done status) → fetched without them again. No separate "Show completed" switch.
 
 ## Detail panel
