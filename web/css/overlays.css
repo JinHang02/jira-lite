@@ -116,9 +116,15 @@ body.selecting #toast { bottom: 72px; }
 .vbar .btn { background: #ffffff14; border-color: #ffffff1f; color: #e2e3e5; }
 .vbar .btn:hover { background: #ffffff24; color: #fff; text-decoration: none; }
 .vstage { flex: 1; min-height: 0; position: relative; display: flex; align-items: center; justify-content: center; padding: 8px 64px 32px; overflow: hidden; }
-.vimg { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 4px; box-shadow: 0 8px 40px #0008; cursor: zoom-in; background: #fff1; }
-.vstage.zoom { overflow: auto; align-items: flex-start; justify-content: flex-start; }
-.vstage.zoom .vimg { max-width: none; max-height: none; cursor: zoom-out; margin: auto; }
+.vimg { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 4px; box-shadow: 0 8px 40px #0008; cursor: zoom-in; background: #fff1;
+  transition: transform .15s var(--ease); user-select: none; -webkit-user-select: none; }
+.vstage.zoomed .vimg { cursor: grab; touch-action: none; border-radius: 0; }
+.vstage.dragging .vimg { cursor: grabbing; transition: none; }
+.vstage.zoomed .vnav { opacity: .5; }
+.vstage.zoomed .vnav:hover { opacity: 1; }
+.vzooms { display: flex; gap: 2px; margin-right: 6px; }
+.vbar .btn.vzoom { min-width: 30px; justify-content: center; padding: 0 8px; font-variant-numeric: tabular-nums; }
+.vbar .btn.vlevel { min-width: 56px; }
 .vnav { position: absolute; top: 50%; width: 40px; height: 40px; margin-top: -20px; display: grid; place-items: center; border-radius: 50%;
   background: #ffffff14; color: #fff; z-index: 1; }
 .vnav:hover { background: #ffffff2e; }
