@@ -1,23 +1,28 @@
 // Browser regression pass for jira-lite against the mock Jira (never the real one).
 //
-// Run the mock + app:   python3 tests/e2e/mock_jira.py --port 9900 --app-port 8900
-// Then run this file with Playwright, e.g. the Playwright MCP's run-code tool with
-// filename "tests/e2e/browser_e2e.js", or wrap it: `(await import(...)).default`-style isn't
-// needed — the file is one `async (page) => {...}` function. It resets the mock, clears the
-// app's saved preferences, runs every check (a failure doesn't stop the rest) and returns a
-// report: one "✔"/"✖" line per check plus unexpected console errors.
+// Run it: `make test-browser` (tests/e2e/run_browser.mjs starts the mock + app on 9900/8900 and runs this
+// headless with Playwright). Or start `python3 tests/e2e/mock_jira.py --port 9900 --app-port 8900` and run
+// this file with the Playwright MCP's run-code tool — it is one `async (page) => {...}` function. It resets
+// the mock, clears the app's saved preferences, runs every check (a failure doesn't stop the rest) and
+// returns a report: one "✔"/"✖" line per check plus unexpected console errors.
 async (page) => {
   const APP = "http://localhost:8900", MOCK = "http://127.0.0.1:9900";
   const out = [], consoleErrors = [];
   const expected = [/issue\/DEMO-5 .*400|DEMO-5:0/, /status of 400 \(Bad Request\)/];  // the refused Task → Epic change
   page.on("console", (m) => { if (m.type() === "error") consoleErrors.push(m.text()); });
   const expect = (ok, msg) => { if (!ok) throw new Error(msg); };
+  // Under run_browser.mjs: E2E_ONLY=<regex> runs only matching checks (plus "setup" ones);
+  // E2E_SHOTS=<dir> saves a screenshot of every failed check there.
+  const env = typeof process !== "undefined" ? process.env : {};
+  const only = env.E2E_ONLY ? new RegExp(env.E2E_ONLY) : null;
   const check = async (name, fn) => {
+    if (only && !only.test(name) && !/setup/.test(name)) return;
     try {
       const note = await fn();
       out.push("✔ " + name + (note ? " — " + note : ""));
     } catch (e) {
       out.push("✖ " + name + " — " + String((e && e.message) || e).split("\n")[0]);
+      if (env.E2E_SHOTS) await page.screenshot({ path: env.E2E_SHOTS + "/fail-" + out.length + ".png" }).catch(() => {});
       await page.keyboard.press("Escape").catch(() => {});
     }
   };
@@ -235,7 +240,7 @@ async (page) => {
     expect(!opts.some((t) => t.includes("2025.12")), "archived version offered");
     await page.locator(".multipick .mi", { hasText: "2026.11" }).click();
     await page.keyboard.press("Escape"); await sleep(400);
-    expect(JSON.stringify((await lastWrite("PUT", "/DEMO-5")).body.fields.fixVersions) === '[{"id":"10200"},{"id":"10201"}]', "fixVersions PUT");
+    expect(JSON.stringify((await lastWrite("PUT", "/DEMO-5")).body.update.fixVersions) === '[{"add":{"id":"10201"}}]', "fixVersions PUT (add verb)");
     const n = (await writes()).length;
     await page.click('#detail .pblock button[title="Change components"]'); await page.keyboard.press("Escape"); await sleep(300);
     expect((await writes()).length === n, "closing an unchanged picker wrote");
@@ -274,7 +279,7 @@ async (page) => {
     await page.waitForSelector(".viewer .vimg");
     expect((await page.textContent(".vw-name")) === "signup-step2.png", "viewer name");
     await page.locator(".viewer .vimg").click();
-    expect(await page.locator(".vstage.zoom").count(), "no zoom");
+    expect(await page.locator(".vstage.zoomed").count(), "no zoom");
     await page.keyboard.press("Escape");
     expect(!(await page.locator(".viewer").count()) && page.context().pages().length === tabs, "viewer/tab state");
   });
@@ -331,7 +336,7 @@ async (page) => {
     await page.fill(".deldialog .delinput", "delet"); await page.press(".deldialog .delinput", "Enter"); await sleep(200);
     expect(await page.locator(".deldialog").count(), "partial word deleted");
     await page.fill(".deldialog .delinput", "delete"); await page.press(".deldialog .delinput", "Enter");
-    await until(() => /Deleted DEMO-4/.test([...document.querySelectorAll(".toast, #toast, [role=status]")].map((e) => e.textContent).join()));
+    await until(() => /Deleted DEMO-4\b/.test([...document.querySelectorAll(".toast, #toast, [role=status]")].map((e) => e.textContent).join()));
     expect((await lastWrite("DELETE", "/DEMO-4")).path.includes("deleteSubtasks=true"), "DELETE without deleteSubtasks");
   });
   await check("panel resize: drag, remembered, double-click resets", async () => {
@@ -374,7 +379,38 @@ async (page) => {
     await page.click(btn); await sleep(500);
     expect(!(await page.locator(".multipick").count()), "list still open");
     const w = (await writes()).slice(n).filter((x) => x.method === "PUT");
-    expect(w.length === 1 && JSON.stringify(w[0].body.fields.components).includes("10302"), "PUTs " + JSON.stringify(w.map((x) => x.body)));
+    expect(w.length === 1 && JSON.stringify(w[0].body.update.components) === '[{"add":{"id":"10302"}}]', "PUTs " + JSON.stringify(w.map((x) => x.body)));
+  });
+  await check("edge: adding a label keeps one a colleague added meanwhile", async () => {
+    await open("DEMO-5");
+    // A colleague adds "theirs" straight in Jira; this panel still shows the old labels.
+    const r = await page.request.put(MOCK + "/rest/api/3/issue/DEMO-5", { headers: { Authorization: "Basic colleague" }, data: { update: { labels: [{ add: "theirs" }] } } });
+    expect(r.status() === 204, "colleague PUT " + r.status());
+    await page.click("#detail .ladd"); await page.fill("#detail .linput", "ours"); await page.keyboard.press("Enter");
+    await until(() => document.querySelector('#detail .lx[aria-label="Remove label ours"]'));
+    const labels = (await (await page.request.get(MOCK + "/rest/api/3/issue/DEMO-5?fields=labels", { headers: { Authorization: "Basic x" } })).json()).fields.labels;
+    expect(labels.includes("theirs") && labels.includes("ours"), "labels " + labels);
+    expect(await page.locator('#detail .lx[aria-label="Remove label theirs"]').count(), "panel doesn't show the colleague's label");
+  });
+  await check("edge: pasted images — a '$' in the name stays literal; one over 25 MB is refused up front", async () => {
+    await open("DEMO-5");
+    await page.locator("#detail .sec .link", { hasText: /^(Edit|Add)$/ }).click();
+    const ta = page.locator("#detail textarea.mdedit");
+    await ta.fill("before\n\nafter");
+    const paste = (name, bytes) => ta.evaluate(async (t, [name, bytes]) => {
+      t.selectionStart = t.selectionEnd = "before\n".length;
+      const dt = new DataTransfer(); dt.items.add(new File([new Uint8Array(bytes)], name, { type: "image/png" }));
+      t.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+    }, [name, bytes]);
+    const n = (await writes()).length;
+    await paste("huge.png", 26 * 1024 * 1024);
+    await until(() => /Too large to attach here.*huge\.png/.test([...document.querySelectorAll(".toast, #toast, [role=status]")].map((e) => e.textContent).join()));
+    expect(!(await writes()).slice(n).some((w) => w.path.includes("/attachments")), "uploaded the oversized image");
+    await paste("budget$'final.png", 64);
+    await until(() => !document.querySelector("#detail textarea.mdedit").value.includes("uploading"));
+    const v = await ta.inputValue();
+    expect(v.includes("budget$'final.png") && v.split("after").length === 2 && v.startsWith("before"), "text garbled: " + JSON.stringify(v));
+    await page.keyboard.press("Escape");
   });
   await check("edge: ⌘↵ twice in the description editor saves once", async () => {
     const n = (await writes()).length;
@@ -414,6 +450,96 @@ async (page) => {
     expect(!(await page.evaluate(() => localStorage.getItem("jl.epic"))), "still filtered on the deleted epic");
     const r = await page.request.get(APP + "/");
     expect(r.headers()["x-frame-options"] === "DENY", "no X-Frame-Options");
+  });
+
+  // ---- read-your-writes: every write shows at once, even while search still has old data ----
+  // The mock's search trails writes by LAG ms (like Jira Cloud's index); each check must see its
+  // write in well under that, and a manual full refresh (r) mustn't bring old data back.
+  const LAG = 5000, FAST = 2000;
+  const fast = (fn, arg) => until(fn, arg, FAST);
+  const rowIn = (key) => document.querySelector('#list .row[data-key="' + key + '"]');
+  const fullRefresh = async () => { await page.locator("body").click({ position: { x: 700, y: 880 } }).catch(() => {}); await page.keyboard.press("Escape"); await page.keyboard.press("r"); await sleep(800); };
+  await check("fresh: setup — reset data, index lag " + LAG + " ms", async () => {
+    expect((await page.request.post(MOCK + "/__mock/reset")).status() === 204, "reset");
+    expect((await page.request.post(MOCK + "/__mock/config?indexLagMs=" + LAG)).status() === 204, "lag");
+    await page.evaluate(() => localStorage.clear());
+    await page.goto(APP + "/?fresh=" + Date.now());
+    await page.waitForSelector("#list .row");
+  });
+  await check("fresh: board drag moves the card at once and it stays through a full refresh", async () => {
+    await view("Board");
+    await page.locator('.tcard[data-key="DEMO-23"]').dragTo(page.locator('#board > .col[data-kind="todo"] .cards'));
+    await fast(() => document.querySelector('.tcard[data-key="DEMO-23"]')?.closest(".col")?.dataset.kind === "todo");
+    await sleep(1200);  // the write has settled; search still says Backlog
+    expect(await page.evaluate(() => document.querySelector('.tcard[data-key="DEMO-23"]')?.closest(".col")?.dataset.kind) === "todo", "card jumped back");
+    await fullRefresh();
+    expect(await page.evaluate(() => document.querySelector('.tcard[data-key="DEMO-23"]')?.closest(".col")?.dataset.kind) === "todo", "a full refresh brought the old status back");
+    if (env.E2E_SHOTS) await page.screenshot({ path: env.E2E_SHOTS + "/fresh-board.png" });
+    await view("List");
+  });
+  await check("fresh: new sub-issue shows in the open parent and the parent row's progress", async () => {
+    await open("DEMO-19");
+    await page.locator("#detail .link", { hasText: "Add sub-issue" }).click();
+    await page.fill(".modal input[aria-label=Title]", "Fresh sub-issue"); await sleep(400);
+    await page.press(".modal input[aria-label=Title]", "Meta+Enter");
+    await fast(() => [...document.querySelectorAll("#detail .subrow")].some((r) => r.textContent.includes("Fresh sub-issue")));
+    await fast(() => document.querySelector('#list .row[data-key="DEMO-19"] .badge')?.textContent === "0/2");
+    if (env.E2E_SHOTS) await page.screenshot({ path: env.E2E_SHOTS + "/fresh-subissue.png" });
+  });
+  await check("fresh: a sub-issue's status change shows in the parent's list", async () => {
+    await open("DEMO-19");
+    await page.locator("#detail .subrow", { hasText: "DEMO-38" }).locator(".ibtn").click();
+    await page.locator(".menu .mi", { hasText: "In Progress" }).click();
+    await fast(() => [...document.querySelectorAll("#detail .subrow")].find((r) => r.textContent.includes("DEMO-38"))?.querySelector(".ibtn")?.title.startsWith("In Progress"));
+  });
+  await check("fresh: title edit updates the list row", async () => {
+    await open("DEMO-19");
+    await page.click("#detail h1.dtitle");
+    await page.fill("#detail textarea.dtitle", "SSO configuration, fresh"); await page.keyboard.press("Enter");
+    await fast(() => document.querySelector('#list .row[data-key="DEMO-19"]')?.textContent.includes("SSO configuration, fresh"));
+    await closePanel();
+  });
+  await check("fresh: moving to Done or reassigning drops the row; it stays gone after a full refresh", async () => {
+    const row = '#list .row[data-key="DEMO-6"]';  // In Review: Done is one step away
+    await page.click(row + " > .ibtn:nth-of-type(2)");
+    await page.locator(".menu .mi", { hasText: "Done" }).click();
+    await fast((k) => !document.querySelector('#list .row[data-key="' + k + '"]'), "DEMO-6");
+    await page.click('#list .row[data-key="DEMO-39"] .rright .ibtn');
+    await page.locator(".menu .mi", { hasText: "Bob" }).click();
+    await fast((k) => !document.querySelector('#list .row[data-key="' + k + '"]'), "DEMO-39");
+    await fullRefresh();
+    expect(!(await page.evaluate(rowIn, "DEMO-6")) && !(await page.evaluate(rowIn, "DEMO-39")), "rows came back after a full refresh");
+  });
+  await check("fresh: bulk priority updates every selected row", async () => {
+    for (const k of ["DEMO-7", "DEMO-23"]) await page.click('#list .row[data-key="' + k + '"] .selbox', { force: true });
+    await page.keyboard.press("p");
+    await page.locator(".menu .mi", { hasText: "Lowest" }).click();
+    await fast(() => ["DEMO-7", "DEMO-23"].every((k) => document.querySelector('#list .row[data-key="' + k + '"] .picon')?.dataset.prio === "lowest"));
+    await page.keyboard.press("Escape");
+  });
+  await check("fresh: a created issue appears in the list; deleting it removes it for good", async () => {
+    await nav("All issues");
+    await page.click("#newBtn");
+    await page.waitForSelector('.modal select[aria-label^="Client"]');
+    await page.fill(".modal input[aria-label=Title]", "Fresh top-level issue");
+    await page.selectOption('.modal select[aria-label^="Client"]', { label: "Globex" });
+    await page.selectOption('.modal select[aria-label^="Fix versions"]', { label: "2026.11" });
+    await page.press(".modal input[aria-label=Title]", "Meta+Enter");
+    await fast(() => [...document.querySelectorAll("#list .row")].some((r) => r.textContent.includes("Fresh top-level issue")));
+    const key = await page.evaluate(() => [...document.querySelectorAll("#list .row")].find((r) => r.textContent.includes("Fresh top-level issue")).dataset.key);
+    await page.waitForSelector('#detail .dscroll[data-key="' + key + '"] .pblock');  // the new issue opened
+    await page.click('#detail .dh button[aria-label="Delete issue…"]');
+    await page.fill(".deldialog .delinput", "delete"); await page.press(".deldialog .delinput", "Enter");
+    await fast((k) => !document.querySelector('#list .row[data-key="' + k + '"]'), key);
+    await fullRefresh();
+    expect(!(await page.evaluate(rowIn, key)), "deleted issue came back after a full refresh");
+    await nav("My issues");
+  });
+  await check("fresh: once the index catches up, search data is used again", async () => {
+    await sleep(LAG);
+    await fullRefresh();
+    expect(await page.evaluate(() => !document.querySelector('#list .row[data-key="DEMO-6"]') && !!document.querySelector('#list .row[data-key="DEMO-23"]')), "list wrong after catch-up");
+    expect((await page.request.post(MOCK + "/__mock/config?indexLagMs=0")).status() === 204, "lag off");
   });
 
   // ---- themes and sizes ----

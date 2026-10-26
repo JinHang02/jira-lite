@@ -9,6 +9,7 @@ import { showModal, closeModal } from "./modal.js";
 import { openMenu } from "./menu.js";
 import { issueTypes, typeFields } from "./meta.js";
 import { actions } from "./actions.js";
+import { settle } from "./edits.js";
 
 // Fields the dialog sets itself (or Jira fills), so they never get a generic required-field select.
 const HANDLED = new Set(["summary", "issuetype", "project", "reporter", "parent", "description", "priority", "assignee"]);
@@ -164,9 +165,10 @@ export async function openCreate(parent) {
       title.value = "";
       toast("Created " + r.key);
       closeModal();
-      await actions.sync();
-      if (parent && state.current === parent.key) actions.loadDetail();
-      else actions.openIssue(r.key);
+      // Show it at once (by key), then merge it and its parent into the list: search may not list it for a few seconds.
+      const inParent = !!parent && state.current === parent.key;
+      if (!inParent) actions.openIssue(r.key);
+      await settle([r.key], { detail: inParent });
     } catch (e) {
       msg.textContent = "";
       toast("Create failed: " + e.message, true);

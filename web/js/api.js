@@ -42,7 +42,9 @@ export async function request(path, body, method) {
   try { data = text ? JSON.parse(text) : null; } catch (e) { /* non-JSON error page */ }
   if (!r.ok) {
     const parts = data ? [...(data.errorMessages || []), ...Object.entries(data.errors || {}).map(([k, v]) => k + ": " + v)] : [];
-    throw new Error(parts.join("; ") || ("HTTP " + r.status + (text ? ": " + text.slice(0, 200) : "")));
+    const err = new Error(parts.join("; ") || ("HTTP " + r.status + (text ? ": " + text.slice(0, 200) : "")));
+    err.status = r.status;
+    throw err;
   }
   return data;
 }
@@ -96,7 +98,12 @@ export const getIssue = (key, fields = DETAIL_FIELDS) => request("issue/" + enc(
 export const getComments = (key) => request("issue/" + enc(key) + "/comment?orderBy=-created&maxResults=100").then((r) => r.comments || []);
 export const getTransitions = (key) => request("issue/" + enc(key) + "/transitions").then((r) => r.transitions || []);
 export const transition = (key, transitionId) => request("issue/" + enc(key) + "/transitions", { transition: { id: transitionId } });
-export const updateIssue = (key, fields) => request("issue/" + enc(key), { fields }, "PUT");
+export const updateIssue = (key, fields) => editIssue(key, { fields });
+/**
+ * PUT issue/{key} with a raw body: `fields` (replace values) and/or `update` (Jira's atomic verbs,
+ * e.g. {labels: [{add: "x"}, {remove: "y"}]}, which keep values others added meanwhile).
+ */
+export const editIssue = (key, body) => request("issue/" + enc(key), body, "PUT");
 export const assign = (key, accountId) => request("issue/" + enc(key) + "/assignee", { accountId }, "PUT");
 export const addComment = (key, adfBody) => request("issue/" + enc(key) + "/comment", { body: adfBody });
 export const createIssue = (fields) => request("issue", { fields });

@@ -13,6 +13,7 @@ import { openMenu } from "./menu.js";
 import { toggleHelp } from "./help.js";
 import { actions } from "./actions.js";
 import { oauthMode, signOut } from "./auth.js";
+import { writes } from "./overlay.js";
 
 const NARROW = "(max-width: 760px)";
 const VIEW_ICON = '<path d="M8 2.25l5.75 3L8 8.25l-5.75-3z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M2.25 8.25L8 11.25l5.75-3M2.25 10.75L8 13.75l5.75-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>';
@@ -213,10 +214,13 @@ export async function loadEpics() {
   }
   try {
     const page = await jira.searchPage(epicsJql(state.cfg.project), { fields: ["summary", "status"], maxResults: EPIC_LIMIT });
-    const epics = page.issues || [];
+    // Search lags behind our own writes: let the fresh copies of written issues win (overlay.js).
+    const openEpic = (i) => ((i.fields.issuetype || {}).hierarchyLevel === 1) && ((i.fields.status || {}).statusCategory || {}).key !== "done";
+    const epics = writes.apply(page.issues || [], openEpic);
     const keys = epics.map((e) => e.key);
-    const kids = [];
+    let kids = [];
     for (const part of chunk(keys)) kids.push(...await jira.searchFields(epicChildrenJql(part), ["status", "parent"]));
+    kids = writes.apply(kids, (i) => !!i.fields.parent && keys.includes(i.fields.parent.key));
     if (seq !== epicsSeq) return;
     state.epics = epicEntries(epics, epicProgress(keys, kids));
     for (const e of state.epics) state.epicInfo.set(e.key, { key: e.key, summary: e.summary });

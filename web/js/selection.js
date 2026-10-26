@@ -12,7 +12,7 @@ import {
 } from "./bulk.js";
 import { labelHue } from "./issues.js";
 import { parseLabels } from "./props.js";
-import { afterEdit } from "./edits.js";
+import { settle } from "./edits.js";
 import { setCursor } from "./cursor.js";
 import { actions } from "./actions.js";
 
@@ -219,11 +219,11 @@ async function writeAll(items, write) {
   }
 }
 
-/** Toasts the summary, then one delta sync (and the open panel). */
+/** Toasts the summary, then settles the written issues (and the open panel). */
 function finish(text, results, isErr) {
   const err = firstError(results, (it) => it.key);
   toast(text + (err ? " — " + err : ""), isErr || !!err);
-  return afterEdit();
+  return settle(results.map((r) => r.item.key));
 }
 
 /** Status: transitions of every selected issue (≤ 4 at once), the union of targets, then moves. */
@@ -254,9 +254,6 @@ async function applyStatus(issues, trans, status) {
   const failed = res.filter((r) => !r.ok).length + plan.unknown.length;
   const moved = res.length - res.filter((r) => !r.ok).length;
   const text = statusSummary({ moved, cannot: plan.cannot.length, already: plan.already.length, failed }, status.name);
-  // Epic progress rings count done children: refresh them when an epic or an epic's child moved.
-  const inEpic = (i) => state.epicInfo.has(i.key) || (i.fields.parent && state.epicInfo.has(i.fields.parent.key));
-  if (moved && issues.some((i) => plan.moves.some((m) => m.key === i.key) && inEpic(i))) actions.loadEpics();
   return finish(text, res, failed > 0 || (plan.cannot.length > 0 && !moved));
 }
 
@@ -304,7 +301,7 @@ function bulkLabels(btn) {
   const apply = (labels) => {
     if (!labels.length) return input.focus();
     closeMenu();
-    applyPlan(issues, labelsPlan(issues, labels), (x) => jira.updateIssue(x.key, x.fields), "Added " + labels.join(", "));
+    applyPlan(issues, labelsPlan(issues, labels), (x) => jira.editIssue(x.key, { update: x.update }), "Added " + labels.join(", "));
   };
   const opt = (label, text, labels) => el("button", { class: "mi", onclick: () => apply(labels) },
     el("i", { class: "ldot", style: "--h:" + labelHue(label) }), el("span", { class: "grow" }, text));

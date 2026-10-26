@@ -5,11 +5,11 @@ import { state, loadPrefs, unstash } from "./state.js";
 import { $, toast } from "./dom.js";
 import { wire } from "./actions.js";
 import { renderSide, updateTitle, setWho, setEpic, applySavedView, saveView, loadEpics, bindSidebar } from "./sidebar.js";
-import { loadList, syncList, renderMain, setView, toggleDone, untickDone, refresh, autoRefresh, bindHeader } from "./views.js";
+import { loadList, renderMain, reconcile, setView, toggleDone, untickDone, refresh, autoRefresh, bindHeader } from "./views.js";
 import { loadStatuses } from "./board.js";
 import { openIssue, closeDetail, loadDetail } from "./detail.js";
 import { openCreate } from "./create.js";
-import { loadPriorities } from "./meta.js";
+import { priorities } from "./meta.js";
 import { installKeyboard } from "./keyboard.js";
 import { bindResize } from "./resize.js";
 import { showAllStatuses, applyDetailMode } from "./display.js";
@@ -56,7 +56,7 @@ function startApp() {
   loadStatuses().then(() => { if (state.view === "board") renderMain(); });
   loadPeople();
   loadMe();
-  loadPriorities().then((p) => { state.priorities = p; }).catch(() => {});
+  priorities().then((p) => { state.priorities = p; }).catch(() => {});
   // After a sign-in round trip, reopen the issue that was open when the session ended.
   const back = unstash("returnTo");
   const key = hashKey() || back;
@@ -79,8 +79,8 @@ function hashKey() {
 
 async function init() {
   wire({
-    openIssue, closeDetail, loadDetail, loadList, renderMain, openCreate, setWho, setView, toggleDone, refresh, sync: syncList,
-    setEpic, applySavedView, saveView, loadEpics, showAllStatuses, untickDone,
+    openIssue, closeDetail, loadDetail, loadList, renderMain, openCreate, setWho, setView, toggleDone, refresh,
+    setEpic, applySavedView, saveView, loadEpics, showAllStatuses, untickDone, reconcile,
   });
   jira.setLoginHandler(requireLogin);
   try { state.cfg = { ...state.cfg, ...(await jira.getConfig()) }; } catch (e) { /* keep defaults */ }

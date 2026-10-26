@@ -31,13 +31,17 @@ evaluator doesn't understand answers 400, so gaps in the mock are visible rather
 Field edits and transitions bump ``updated`` and append changelog histories; comment writes
 bump ``updated`` only (Jira keeps comments out of the changelog too).
 
+Search is eventually consistent, like Jira Cloud's index: with an index lag (``--index-lag-ms N``
+or ``POST /__mock/config?indexLagMs=N``; default 0) ``search/jql`` sees every issue as it was N ms
+ago, while ``GET issue/{key}`` and the other REST reads are always current.
+
 Test hooks: ``GET /__mock/requests[?since=N]`` lists recorded requests ({seq, method, path,
-body, status, auth}); ``POST /__mock/reset`` reseeds and clears them. ``--log FILE`` appends
-every request as one JSON line.
+body, status, auth}); ``POST /__mock/reset`` reseeds and clears them (the index lag stays).
+``--log FILE`` appends every request as one JSON line.
 
 CLI::
 
-    python3 tests/e2e/mock_jira.py --port 9900 [--log file] [--latency-ms N]
+    python3 tests/e2e/mock_jira.py --port 9900 [--log file] [--latency-ms N] [--index-lag-ms N]
     python3 tests/e2e/mock_jira.py --port 9900 --app-port 8900   # also run jira-lite against it
 """
 
@@ -626,6 +630,7 @@ class MockJira:
         self.base = base_url.rstrip("/")
         self.project = project
         self.lock = threading.RLock()
+        self.index_lag = 0.0  # seconds search/jql trails the live data (see _searchable)
         self.reset()
 
     # ---- state ------------------------------------------------------------------------------
@@ -642,6 +647,25 @@ class MockJira:
             self.next_history = 20000
             self.next_attachment = 10600
             self._seed()
+            # (visible_at, snapshot of self.issues): what search/jql sees from visible_at on.
+            self._index = [(0.0, copy.deepcopy(self.issues))]  # type: List[Tuple[float, Dict[str, Dict[str, Any]]]]
+
+    def reindex(self) -> None:
+        """Queues the current data for search, visible after the index lag (call after every write)."""
+        with self.lock:
+            if not self.index_lag:
+                return
+            now = time.monotonic()
+            self._index.append((now + self.index_lag, copy.deepcopy(self.issues)))
+            live = [i for i, (at, _) in enumerate(self._index) if at <= now]
+            del self._index[:live[-1] if live else 0]  # keep the newest visible snapshot and the queued ones
+
+    def _searchable(self) -> Dict[str, Dict[str, Any]]:
+        """The issues as the search index has them: the live data without a lag."""
+        if not self.index_lag:
+            return self.issues
+        now = time.monotonic()
+        return [snap for at, snap in self._index if at <= now][-1]
 
     def _seed(self) -> None:
         epoch = self.epoch
@@ -949,7 +973,10 @@ class MockJira:
             m = re.match(pattern + "$", rest)
             if m and verb == method:
                 with self.lock:
-                    return fn(*[unquote(g) for g in m.groups()], q=q, body=body)
+                    out = fn(*[unquote(g) for g in m.groups()], q=q, body=body)
+                    if method != "GET" and pattern != r"search/jql":
+                        self.reindex()
+                    return out
         if any(re.match(pattern + "$", rest) for _, pattern, _ in self.routes()):
             raise ApiError(405, ["mock_jira: method %s is not supported for %s" % (method, path)])
         raise ApiError(404, ["mock_jira: no route for %s %s" % (method, path)])
@@ -1111,6 +1138,14 @@ class MockJira:
             raise ApiError(400, [str(e)])
         if not jql.clauses:
             raise ApiError(400, ["Unbounded JQL queries are not allowed here. Please add a search restriction to your query."])
+        live = self.issues
+        self.issues = self._searchable()  # predicates and issue_json read self.issues; restored below
+        try:
+            return self._search(jql, jql_text, fields, max_results, token, expand)
+        finally:
+            self.issues = live
+
+    def _search(self, jql: "Jql", jql_text: str, fields: Any, max_results: Any, token: Any, expand: Any) -> Tuple[int, Any]:
         match = self._predicate(jql)
         hits = [i for i in self.issues.values() if match(i)]
         hits = self._sorted(hits, jql.order)
@@ -1572,16 +1607,54 @@ class MockJira:
         issue = self.find_issue(ref)
         if not isinstance(body, dict):
             raise ApiError(400, ["Request body must be a JSON object."])
-        if body.get("update"):
-            raise ApiError(400, ["mock_jira: 'update' operations are not implemented; use 'fields'."])
         fields = body.get("fields") or {}
         if not isinstance(fields, dict):
             raise ApiError(400, ["'fields' must be an object."])
+        if body.get("update"):
+            fields = dict(fields, **self._update_ops(issue, body["update"], fields))
         changes, errors = self._validate_fields(fields, issue["type"], creating=False, issue=issue)
         if errors:
             raise ApiError(400, [], errors)
         self._record_change(issue, self._apply(issue, changes))
         return 204, None
+
+    # Fields the `update` verbs work on here: id -> (current value in request shape, value -> identity).
+    LIST_FIELDS = {
+        "labels": (lambda i: list(i["labels"]), lambda v: v),
+        "fixVersions": (lambda i: [{"id": x} for x in i["fixVersions"]], lambda v: str(v.get("id")) if isinstance(v, dict) else None),
+        "components": (lambda i: [{"id": x} for x in i["components"]], lambda v: str(v.get("id")) if isinstance(v, dict) else None),
+    }
+
+    def _update_ops(self, issue: Dict[str, Any], update: Any, fields: Dict[str, Any]) -> Dict[str, Any]:
+        """Jira's `update` verbs (add / remove / set) for list fields, applied to the issue's
+        current value; returns the resulting values as `fields` entries for the usual validation."""
+        if not isinstance(update, dict):
+            raise ApiError(400, ["'update' must be an object."])
+        out = {}  # type: Dict[str, Any]
+        for fid, ops in update.items():
+            if fid in fields:
+                raise ApiError(400, [], {fid: "Field '%s' cannot be set in both 'fields' and 'update'." % fid})
+            if fid not in self.LIST_FIELDS:
+                raise ApiError(400, ["mock_jira: 'update' on %s is not implemented." % fid])
+            current, ident = self.LIST_FIELDS[fid]
+            value = current(issue)
+            if not isinstance(ops, list):
+                raise ApiError(400, [], {fid: "Operations must be a list."})
+            for op in ops:
+                if not isinstance(op, dict) or len(op) != 1 or next(iter(op)) not in ("add", "remove", "set"):
+                    raise ApiError(400, [], {fid: "Each operation must be one of add, remove, set."})
+                verb, v = next(iter(op.items()))
+                if verb == "set":
+                    value = list(v or [])
+                elif verb == "add":
+                    if ident(v) is None:
+                        raise ApiError(400, [], {fid: "Bad value for add."})
+                    if all(ident(x) != ident(v) for x in value):
+                        value.append(v)
+                else:
+                    value = [x for x in value if ident(x) != ident(v)]
+            out[fid] = value
+        return out
 
     def delete_issue(self, ref: str, q: Dict[str, str], body: Any) -> Tuple[int, Any]:
         issue = self.find_issue(ref)
@@ -1777,6 +1850,7 @@ class MockJira:
                 self._history(issue, ME_ID, now, [self._item("Attachment", None, None, att["id"], filename)])
                 out.append(self.attachment_json(att))
             issue["updated"] = now
+            self.reindex()
             return 200, out
 
     def search_users(self, q: Dict[str, str]) -> Tuple[int, Any]:
@@ -1905,6 +1979,13 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/__mock/reset" and self.command == "POST":
             self.server.reset()
             return self._send(204, b"", None)
+        if path == "/__mock/config" and self.command == "POST":
+            lag = (parse_qs(query).get("indexLagMs") or [""])[-1]
+            if not lag.isdigit():
+                return self._send(400, b'{"errorMessages":["indexLagMs must be a whole number of ms"]}', "application/json")
+            self.server.jira.index_lag = int(lag) / 1000.0
+            self.server.jira.reindex()
+            return self._send(204, b"", None)
         self._send(404, b'{"errorMessages":["unknown mock control endpoint"]}', "application/json")
 
     def _send(self, status: int, data: bytes, ctype: Optional[str]) -> None:
@@ -1930,10 +2011,11 @@ class MockJiraServer(ThreadingHTTPServer):
     daemon_threads = True
 
     def __init__(self, host: str = "127.0.0.1", port: int = 0, log_path: Optional[str] = None,
-                 latency_ms: int = 0, project: str = PROJECT_KEY, verbose: bool = False) -> None:
+                 latency_ms: int = 0, project: str = PROJECT_KEY, verbose: bool = False, index_lag_ms: int = 0) -> None:
         super().__init__((host, port), Handler)
         self.url = "http://%s:%d" % (host, self.server_address[1])
         self.jira = MockJira(self.url, project)
+        self.jira.index_lag = index_lag_ms / 1000.0
         self.log_path = log_path
         self.latency = latency_ms / 1000.0
         self.verbose = verbose
@@ -1995,11 +2077,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--port", type=int, default=9900)
     ap.add_argument("--log", help="append every request as a JSON line to this file")
     ap.add_argument("--latency-ms", type=int, default=0, help="delay every response by N ms")
+    ap.add_argument("--index-lag-ms", type=int, default=0, help="search/jql trails writes by N ms, like Jira Cloud's index")
     ap.add_argument("--project", default=PROJECT_KEY)
     ap.add_argument("--app-port", type=int, help="also serve jira-lite (token mode, against this mock) on this port")
     ap.add_argument("-v", "--verbose", action="store_true", help="log each request to stderr")
     args = ap.parse_args(argv)
-    server = MockJiraServer(args.host, args.port, args.log, args.latency_ms, args.project.upper(), args.verbose)
+    server = MockJiraServer(args.host, args.port, args.log, args.latency_ms, args.project.upper(), args.verbose,
+                            args.index_lag_ms)
     print("mock Jira on %s  (project %s, %d issues; Ctrl+C to stop)"
           % (server.url, args.project.upper(), len(server.jira.issues)), flush=True)
     app = None

@@ -157,3 +157,6 @@ export function deleteWarning({ subtasks = 0, children = 0 } = {}) {
 
 /** True once the confirmation box says "delete" (case and surrounding spaces ignored). */
 export const deleteTyped = (text) => String(text || "").trim().toLowerCase() === "delete";
+
+/** A copy of `issues`, oldest created first (how Jira lists sub-issues). Stable. */
+export const byCreated = (issues) => [...issues].sort((a, b) => time(a.fields.created) - time(b.fields.created));

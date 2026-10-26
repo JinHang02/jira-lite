@@ -5,7 +5,7 @@ import { state, store } from "./state.js";
 import { $, el, icon, ICONS, toast, typingIn } from "./dom.js";
 import { buildJql, deltaJql, matchesView } from "./jql.js";
 import { filterIssues, sortIssues, hideStatuses } from "./issues.js";
-import { syncPlan, deltaMinutes, mergeDelta, sinceLabel, REFRESH_MS } from "./sync.js";
+import { syncPlan, deltaMinutes, mergeDelta, unseenChanges, sinceLabel, REFRESH_MS } from "./sync.js";
 import { renderList } from "./list.js";
 import { renderBoard } from "./board.js";
 import { toggleDisplay } from "./display.js";
@@ -13,6 +13,7 @@ import { isMac } from "./help.js";
 import { activeMenu } from "./menu.js";
 import { syncSelection } from "./selection.js";
 import { actions } from "./actions.js";
+import { writes } from "./overlay.js";
 
 const DELTA_PAGE = 100;
 let listSeq = 0;      // bumped by every full load; a delta is dropped if one started meanwhile
@@ -42,7 +43,7 @@ async function fullReload() {
   try {
     const out = await jira.searchAll(buildJql({ project: cfg.project, who, showDone, epic }));
     if (seq !== listSeq) return;  // a newer load started meanwhile
-    state.issues = out;
+    state.issues = writes.apply(out, (i) => matchesView(i, viewFilter()));  // the index may not have our latest writes yet
     state.loaded = true;
     state.loadError = "";
     state.lastSync = state.lastFull = started;
@@ -76,17 +77,36 @@ export async function syncList() {
     if (seq !== listSeq || dseq !== deltaSeq) return [];  // superseded
     if (page.nextPageToken && !page.isLast) { await loadList(); return []; }  // a burst of changes: reload
     // Filters may have changed while the request ran; such a change also starts a full load (caught above).
-    const r = mergeDelta(state.issues, page.issues || [], (i) => matchesView(i, view));
+    // Our own recent writes win over the copies a lagging index still returns (see overlay.js).
+    const delta = writes.apply(page.issues || [], () => true, { add: false });
+    const r = mergeDelta(state.issues, delta, (i) => matchesView(i, view));
     state.lastSync = now;
     if (r.changed) {
       state.issues = r.issues;
       renderMain();
     }
-    return page.issues || [];
+    return delta;
   } catch (e) {
     if (dseq === deltaSeq && !e.loginRequired) toast("Couldn't refresh tickets: " + e.message, true);
     return [];
   }
+}
+
+/**
+ * Merges the overlay's fresh copies of just-written issues into the list (adding, updating or
+ * removing them as the view's filters say) and into `state.known`, then re-renders if needed.
+ */
+export function reconcile() {
+  for (const k of state.known.keys()) {
+    const fresh = writes.get(k);
+    if (fresh === null) state.known.delete(k);
+    else if (fresh) state.known.set(k, fresh);
+  }
+  if (!state.loaded) return;
+  const next = writes.apply(state.issues, (i) => matchesView(i, viewFilter()));
+  if (next === state.issues) return;
+  state.issues = next;
+  renderMain();
 }
 
 /** Re-renders the current view from state.issues, the filter and the Display options. */
@@ -222,7 +242,7 @@ export function refresh() {
 export async function autoRefresh() {
   if (!canRefresh()) return;
   const full = state.lastFull;
-  const delta = await syncList();
+  const delta = unseenChanges(await syncList(), deltaSeen);
   const fullReloaded = state.lastFull !== full;
   // Epic progress: refresh with the periodic full reload, or when an epic or an epic's child changed.
   const parentKey = (i) => (i.fields && i.fields.parent ? i.fields.parent.key : null);
@@ -233,6 +253,9 @@ export async function autoRefresh() {
   const touched = delta.some((i) => i.key === cur || parentKey(i) === cur);
   if (touched || fullReloaded) reloadDetail();
 }
+
+// What the last delta returned (key -> `updated`), so autoRefresh reacts to each change once.
+const deltaSeen = new Map();
 
 /** Clears the free-text filter box. */
 export function clearFilter() {

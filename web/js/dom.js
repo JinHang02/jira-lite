@@ -54,6 +54,24 @@ export function typingIn(node) {
   return node instanceof Element && node.matches("input, textarea, select, [contenteditable]");
 }
 
+/**
+ * Returns a function giving `node`, or — once a re-render replaced it — the same element of the
+ * re-rendered row/card/panel (same `data-key` host, same position among its kind), or null.
+ * For menus that open after an await, during which the list may re-render.
+ */
+export function follow(node) {
+  const host = node.closest("[data-key]");
+  if (!host) return () => (node.isConnected ? node : null);
+  const area = host.closest("#list, #board, #detail");
+  const sel = (area ? "#" + area.id + " " : "") + "." + [...host.classList][0] + '[data-key="' + CSS.escape(host.dataset.key) + '"]';
+  const idx = [...host.querySelectorAll(node.tagName)].indexOf(node);
+  return () => {
+    if (node.isConnected) return node;
+    const h = document.querySelector(sel);
+    return (h && h.querySelectorAll(node.tagName)[idx]) || null;
+  };
+}
+
 /** The list row or board card showing `key`. */
 export function rowFor(key) {
   return document.querySelector('[data-key="' + CSS.escape(key) + '"]:is(.row, .tcard)');

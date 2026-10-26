@@ -23,6 +23,15 @@ DEMO-7 and DEMO-26 (Blocked, overdue).
 - [ ] Show sub-issue progress off → no "1/3" badges. All four settings survive a reload.
 - [ ] On the board, Grouping offers None / Assignee / Priority / Component. Component → sticky column header row, one collapsible row per group (API 2, API, Web 1, Mobile 1, Web 2, No component); dragging a card to another column inside its row transitions it; collapsed rows survive reload; None → the plain board again.
 
+## Writes show at once (read-your-writes)
+Start the mock with `--index-lag-ms 5000` (search trails writes by 5 s, like Jira Cloud's index) to check these by hand; `make test-browser` runs them (`fresh:` checks).
+- [ ] Board: drag a card to another column → it moves immediately and stays; `r` (full refresh) right after doesn't move it back.
+- [ ] Open an issue, "+ Add sub-issue" → the new sub-issue is listed in the panel at once, and the parent row's badge counts it (e.g. 0/1 → 0/2).
+- [ ] Change a sub-issue's status from the panel → its row in the panel updates at once.
+- [ ] Edit a title → the list row shows it at once. Move an issue to Done / reassign it away → it leaves "My issues" at once and stays gone after `r`.
+- [ ] Bulk priority on two selected rows → both rows update at once. Create an issue (All issues) → it appears at once; delete it → gone, and `r` doesn't bring it back.
+- [ ] Add a label while someone else added another in Jira meanwhile → both labels remain (writes use `update` add/remove).
+
 ## Filter
 - [ ] `/` focuses Filter; typing "signup" narrows to matching key/title/assignee; count shows "N / 11"; Enter moves the cursor to the first hit.
 - [ ] No match → "No issues match …" with Clear filter. `Esc` clears; second `Esc` blurs.

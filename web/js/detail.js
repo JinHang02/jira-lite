@@ -23,6 +23,8 @@ import { bindImages } from "./descimages.js";
 import { confirmDelete } from "./deleteview.js";
 import { openViewer } from "./viewer.js";
 import { setDisplay } from "./display.js";
+import { writes } from "./overlay.js";
+import { byCreated } from "./issues.js";
 
 const HASH_SVG = '<path d="M5.25 2.5l-1 9M9.75 2.5l-1 9M2.75 5.25h9M2.25 8.75h9" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>';
 const LINK_SVG = '<path d="M6 8a2.5 2.5 0 0 0 3.5.25l1.75-1.75a2.5 2.5 0 0 0-3.5-3.5l-.75.75M8 6a2.5 2.5 0 0 0-3.5-.25L2.75 7.5a2.5 2.5 0 0 0 3.5 3.5l.75-.75" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>';
@@ -126,6 +128,8 @@ export async function loadDetail() {
       editMeta(key, metaSig(known)),
     ]);
     if (stale()) return;
+    // The search index may not list a just-created sub-issue (or still list a moved one) yet.
+    children = byCreated(writes.apply(children, (c) => !!c.fields.parent && c.fields.parent.key === key));
     if (metaSig(issue) !== metaSig(known)) meta = await editMeta(key, metaSig(issue));
     const typeId = issue.fields.issuetype ? issue.fields.issuetype.id : null;
     if (typeId !== guess) {

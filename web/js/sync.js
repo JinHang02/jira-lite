@@ -53,6 +53,20 @@ export function mergeDelta(issues, delta, keep) {
   return { issues: [...fresh, ...issues.filter((i) => !drop.has(i.key))], changed: true };
 }
 
+/**
+ * The delta items not handled before: consecutive delta windows overlap (see OVERLAP_MIN), so
+ * one change comes back in about three deltas in a row; reacting to it once (epic progress,
+ * detail reload) saves those repeated searches. `seen` (key -> `updated`) is updated in place
+ * and kept to the keys of the latest delta, so it stays small.
+ */
+export function unseenChanges(delta, seen) {
+  const out = (delta || []).filter((i) => seen.get(i.key) !== (i.fields || {}).updated);
+  const latest = new Map((delta || []).map((i) => [i.key, (i.fields || {}).updated]));
+  seen.clear();
+  for (const [k, v] of latest) seen.set(k, v);
+  return out;
+}
+
 /** "just now", "1 min ago", "12 min ago", "3 h ago" for a past timestamp (ms); "" when never. */
 export function sinceLabel(ts, now = Date.now()) {
   if (!ts) return "";

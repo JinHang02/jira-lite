@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { syncPlan, deltaMinutes, mergeDelta, FULL_EVERY_MS, OVERLAP_MIN } from "../../web/js/sync.js";
+import { syncPlan, deltaMinutes, mergeDelta, unseenChanges, FULL_EVERY_MS, OVERLAP_MIN } from "../../web/js/sync.js";
 import { deltaJql, matchesView, buildJql } from "../../web/js/jql.js";
 
 const ME = "712020:me";
@@ -126,4 +126,16 @@ test("sinceLabel: relative time since the last sync", async () => {
   assert.equal(sinceLabel(t, t + 60000), "1 min ago");
   assert.equal(sinceLabel(t, t + 12 * 60000 + 59000), "12 min ago");
   assert.equal(sinceLabel(t, t + 3 * 3600000 + 1), "3 h ago");
+});
+
+test("unseenChanges: each change once across overlapping deltas; a newer update shows again", () => {
+  const seen = new Map();
+  const a1 = iss("A-1"), b1 = iss("B-1");
+  assert.deepEqual(unseenChanges([a1, b1], seen).map((i) => i.key), ["A-1", "B-1"]);
+  assert.deepEqual(unseenChanges([a1, b1], seen), []);
+  const a2 = iss("A-1", { updated: "2026-10-20T10:05:00.000+0800" });
+  assert.deepEqual(unseenChanges([a2, b1], seen).map((i) => i.key), ["A-1"]);
+  assert.deepEqual(unseenChanges([], seen), []);
+  assert.equal(seen.size, 0);  // only the latest delta's keys are kept
+  assert.deepEqual(unseenChanges([a2], seen).map((i) => i.key), ["A-1"]);  // fell out of the window, then back: once more
 });
