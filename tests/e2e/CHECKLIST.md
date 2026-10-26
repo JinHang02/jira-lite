@@ -32,6 +32,11 @@ Start the mock with `--index-lag-ms 5000` (search trails writes by 5 s, like Jir
 - [ ] Bulk priority on two selected rows → both rows update at once. Create an issue (All issues) → it appears at once; delete it → gone, and `r` doesn't bring it back.
 - [ ] Add a label while someone else added another in Jira meanwhile → both labels remain (writes use `update` add/remove).
 
+## Cut-offs, sign-in drafts, search errors
+- [ ] `POST http://127.0.0.1:9900/__mock/config?maxPage=1`, reload: the count shows "5+" (tooltip explains), DEMO-4's sub-issues header "1/1+ done"; give an epic over 5 children → its sidebar progress shows "n/m+". `?maxPage=100` restores.
+- [ ] Session ends mid-edit (OAuth: restart the server; or answer a save with 401 + `X-Jira-Lite-Auth: login`): open title / description / comment-edit text comes back in its editor after signing in, with a "Restored your unsaved edits" toast; nothing is saved by itself.
+- [ ] ⌘K: when Jira's search fails the palette says "Jira search failed: …" (not "No results"); an unknown key like DEMO-999 is just "No results".
+
 ## Filter
 - [ ] `/` focuses Filter; typing "signup" narrows to matching key/title/assignee; count shows "N / 11"; Enter moves the cursor to the first hit.
 - [ ] No match → "No issues match …" with Clear filter. `Esc` clears; second `Esc` blurs.

@@ -25,13 +25,14 @@ test("epicProgress counts done-category children per epic", () => {
   assert.deepEqual(Object.fromEntries(p), { "E-1": { done: 2, total: 3 }, "E-2": { done: 0, total: 1 }, "E-3": { done: 0, total: 0 } });
 });
 
-test("epicEntries joins the epics with their progress", () => {
+test("epicEntries joins the epics with their progress; cut-off counts are marked `more`", () => {
   const epics = [{ key: "E-1", fields: { summary: "One", status: { name: "To Do" } } }, { key: "E-2", fields: {} }];
   const p = new Map([["E-1", { done: 1, total: 4 }]]);
   assert.deepEqual(epicEntries(epics, p), [
-    { key: "E-1", summary: "One", status: { name: "To Do" }, done: 1, total: 4 },
-    { key: "E-2", summary: "E-2", status: null, done: 0, total: 0 },
+    { key: "E-1", summary: "One", status: { name: "To Do" }, done: 1, total: 4, more: false },
+    { key: "E-2", summary: "E-2", status: null, done: 0, total: 0, more: false },
   ]);
+  assert.deepEqual(epicEntries(epics, p, new Set(["E-1"])).map((e) => e.more), [true, false]);
 });
 
 test("visibleEpics: first N, plus the selected one; all on request", () => {

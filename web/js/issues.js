@@ -33,7 +33,7 @@ export function progress(children) {
  */
 export function childProgress(issue, epics) {
   const e = (epics || []).find((x) => x.key === issue.key);
-  if (e && e.total) return { done: e.done, total: e.total, epic: true };
+  if (e && e.total) return { done: e.done, total: e.total, epic: true, more: !!e.more };
   return { ...progress(((issue || {}).fields || {}).subtasks), epic: false };
 }
 

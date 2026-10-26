@@ -21,6 +21,19 @@ export function setLoginHandler(fn) { onLoginRequired = fn; }
 /** True for the server's "sign in again" 401 (a Jira 401 without the header is a normal error). */
 const needsLogin = (r) => r.status === 401 && r.headers.get("X-Jira-Lite-Auth") === "login";
 
+/** JSON, or null for an empty or non-JSON body (e.g. an HTML error page). */
+function parseJson(text) {
+  try { return text ? JSON.parse(text) : null; } catch (e) { return null; }
+}
+
+/** An Error with Jira's messages (errorMessages + field errors), or the status and start of the body; `.status` is set. */
+function jiraError(status, text, data) {
+  const parts = data ? [...(data.errorMessages || []), ...Object.entries(data.errors || {}).map(([k, v]) => k + ": " + v)] : [];
+  const err = new Error(parts.join("; ") || ("HTTP " + status + (text ? ": " + text.slice(0, 200) : "")));
+  err.status = status;
+  return err;
+}
+
 /**
  * Calls the proxy. Relative paths go to /jira/; absolute ones are used as is.
  * POSTs when a body is given, unless `method` says otherwise. Throws Error with Jira's messages,
@@ -38,14 +51,8 @@ export async function request(path, body, method) {
     throw new LoginRequired();
   }
   const text = await r.text();
-  let data = null;
-  try { data = text ? JSON.parse(text) : null; } catch (e) { /* non-JSON error page */ }
-  if (!r.ok) {
-    const parts = data ? [...(data.errorMessages || []), ...Object.entries(data.errors || {}).map(([k, v]) => k + ": " + v)] : [];
-    const err = new Error(parts.join("; ") || ("HTTP " + r.status + (text ? ": " + text.slice(0, 200) : "")));
-    err.status = r.status;
-    throw err;
-  }
+  const data = parseJson(text);
+  if (!r.ok) throw jiraError(r.status, text, data);
   return data;
 }
 
@@ -80,18 +87,24 @@ export function searchPage(jql, { fields = FIELDS, maxResults = 100, nextPageTok
 /** Issues matching `jql` (first page only). */
 export const searchIssues = (jql, maxResults = 100) => searchPage(jql, { maxResults }).then((r) => r.issues || []);
 
-/** All issues matching `jql`, following pagination up to `maxPages` pages of 100. */
-export async function searchAll(jql, maxPages = 5) {
-  const out = [];
+/**
+ * Issues matching `jql` with `fields`, following pagination up to `maxPages` pages of 100:
+ * {issues, more}, where `more` says Jira had further pages (the result is cut off).
+ */
+export async function searchPages(jql, { fields = FIELDS, maxPages = 5 } = {}) {
+  const issues = [];
   let token;
   for (let page = 0; page < maxPages; page++) {
-    const r = await searchPage(jql, { nextPageToken: token });
-    out.push(...(r.issues || []));
+    const r = await searchPage(jql, { fields, nextPageToken: token });
+    issues.push(...(r.issues || []));
     token = r.nextPageToken;
-    if (!token || r.isLast) break;
+    if (!token || r.isLast) return { issues, more: false };
   }
-  return out;
+  return { issues, more: true };
 }
+
+/** True when a searchPage result has further pages. */
+export const hasMore = (page) => !!(page && page.nextPageToken && !page.isLast);
 
 // ---- issues ----
 export const getIssue = (key, fields = DETAIL_FIELDS) => request("issue/" + enc(key) + "?fields=" + fields.join(","));
@@ -157,11 +170,9 @@ export function uploadAttachments(key, files, onProgress = () => {}) {
         onLoginRequired();
         return reject(new LoginRequired());
       }
-      let data = null;
-      try { data = xhr.responseText ? JSON.parse(xhr.responseText) : null; } catch (e) { /* plain-text error */ }
+      const data = parseJson(xhr.responseText);
       if (xhr.status >= 200 && xhr.status < 300) return resolve(data || []);
-      const parts = data ? [...(data.errorMessages || []), ...Object.entries(data.errors || {}).map(([k, v]) => k + ": " + v)] : [];
-      reject(new Error(parts.join("; ") || ("HTTP " + xhr.status + (xhr.responseText ? ": " + xhr.responseText.slice(0, 200) : ""))));
+      reject(jiraError(xhr.status, xhr.responseText, data));
     });
     xhr.send(form);
   });
@@ -169,17 +180,3 @@ export function uploadAttachments(key, files, onProgress = () => {}) {
 
 /** The Media Services file id of an attachment (what an ADF media node names), via the server. */
 export const getMediaId = (attachmentId) => request("/files/media/" + enc(attachmentId)).then((r) => r.id);
-
-// ---- lists & navigation ----
-/** All issues matching `jql` with only `fields` (e.g. the sidebar's epic progress), up to `maxPages` pages of 100. */
-export async function searchFields(jql, fields, maxPages = 5) {
-  const out = [];
-  let token;
-  for (let page = 0; page < maxPages; page++) {
-    const r = await searchPage(jql, { fields, nextPageToken: token });
-    out.push(...(r.issues || []));
-    token = r.nextPageToken;
-    if (!token || r.isLast) break;
-  }
-  return out;
-}

@@ -158,7 +158,7 @@ class E2ETestCase(unittest.TestCase):
         return self.jira("POST", "search/jql", body)
 
     def search_all(self, jql: str, max_results: int = 100, max_pages: int = 50) -> Tuple[List[Dict[str, Any]], int]:
-        """api.searchAll: follows nextPageToken. Returns (issues, pages)."""
+        """api.searchPages: follows nextPageToken. Returns (issues, pages)."""
         out = []  # type: List[Dict[str, Any]]
         token = None
         for page in range(1, max_pages + 1):

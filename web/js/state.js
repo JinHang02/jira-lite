@@ -13,6 +13,7 @@ export const state = {
   issueTypes: [],           // from createmeta
   statuses: [],             // the project's statuses, de-duplicated (board columns)
   issues: [],               // the current list
+  listMore: false,          // the full load stopped at its page limit: Jira has more issues for this view
   known: new Map(),         // key -> issue, for issues opened outside the list (children, search hits)
 
   // ---- view state ----

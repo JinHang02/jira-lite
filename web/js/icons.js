@@ -55,9 +55,10 @@ export function avatar(u) {
 
 /** "2/5" progress pill of an issue's sub-issues (an epic's child issues per `epics`, else its sub-tasks), or null. */
 export function subBadge(issue, epics) {
-  const { done, total, epic } = childProgress(issue, epics);
+  const { done, total, epic, more } = childProgress(issue, epics);
   if (!total) return null;
-  return el("span", { class: "badge", title: done + " of " + total + (epic ? " child issues" : " sub-tasks") + " done" }, icon(12, ICONS.sub, ""), done + "/" + total);
+  const n = total + (more ? "+" : "");  // more: Jira has further children than were counted
+  return el("span", { class: "badge", title: done + " of " + n + (epic ? " child issues" : " sub-tasks") + " done" }, icon(12, ICONS.sub, ""), done + "/" + n);
 }
 
 const COMPONENT_SVG = '<path d="M7 1.75l4.75 2.6v5.3L7 12.25l-4.75-2.6v-5.3z M2.5 4.4L7 6.9l4.5-2.5M7 6.9v5.2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>';

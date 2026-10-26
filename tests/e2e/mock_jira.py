@@ -33,10 +33,11 @@ bump ``updated`` only (Jira keeps comments out of the changelog too).
 
 Search is eventually consistent, like Jira Cloud's index: with an index lag (``--index-lag-ms N``
 or ``POST /__mock/config?indexLagMs=N``; default 0) ``search/jql`` sees every issue as it was N ms
-ago, while ``GET issue/{key}`` and the other REST reads are always current.
+ago, while ``GET issue/{key}`` and the other REST reads are always current. Jira may also return
+smaller pages than asked: ``POST /__mock/config?maxPage=N`` caps them (default 100).
 
 Test hooks: ``GET /__mock/requests[?since=N]`` lists recorded requests ({seq, method, path,
-body, status, auth}); ``POST /__mock/reset`` reseeds and clears them (the index lag stays).
+body, status, auth}); ``POST /__mock/reset`` reseeds and clears them (the config stays).
 ``--log FILE`` appends every request as one JSON line.
 
 CLI::
@@ -631,6 +632,7 @@ class MockJira:
         self.project = project
         self.lock = threading.RLock()
         self.index_lag = 0.0  # seconds search/jql trails the live data (see _searchable)
+        self.max_page = MAX_PAGE  # search/jql page size cap (Jira may return fewer than asked)
         self.reset()
 
     # ---- state ------------------------------------------------------------------------------
@@ -1149,7 +1151,7 @@ class MockJira:
         match = self._predicate(jql)
         hits = [i for i in self.issues.values() if match(i)]
         hits = self._sorted(hits, jql.order)
-        size = MAX_PAGE if max_results in (None, "") else max(1, min(int(max_results), MAX_PAGE))
+        size = self.max_page if max_results in (None, "") else max(1, min(int(max_results), self.max_page))
         digest = hashlib.sha1(jql_text.encode()).hexdigest()[:12]
         offset = 0
         if token:
@@ -1980,11 +1982,14 @@ class Handler(BaseHTTPRequestHandler):
             self.server.reset()
             return self._send(204, b"", None)
         if path == "/__mock/config" and self.command == "POST":
-            lag = (parse_qs(query).get("indexLagMs") or [""])[-1]
-            if not lag.isdigit():
-                return self._send(400, b'{"errorMessages":["indexLagMs must be a whole number of ms"]}', "application/json")
-            self.server.jira.index_lag = int(lag) / 1000.0
-            self.server.jira.reindex()
+            q = {k: v[-1] for k, v in parse_qs(query).items()}
+            if not q or any(k not in ("indexLagMs", "maxPage") or not v.isdigit() for k, v in q.items()) or q.get("maxPage") == "0":
+                return self._send(400, b'{"errorMessages":["use indexLagMs=<ms> and/or maxPage=<n> (whole numbers)"]}', "application/json")
+            if "maxPage" in q:
+                self.server.jira.max_page = int(q["maxPage"])
+            if "indexLagMs" in q:
+                self.server.jira.index_lag = int(q["indexLagMs"]) / 1000.0
+                self.server.jira.reindex()
             return self._send(204, b"", None)
         self._send(404, b'{"errorMessages":["unknown mock control endpoint"]}', "application/json")
 

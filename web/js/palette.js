@@ -77,6 +77,7 @@ export function openPalette() {
     const seq = ++pal.seq;
     pal.timer = setTimeout(async () => {
       let hits = [];
+      let failed = "";
       try {
         const km = q.match(/^(?:([A-Za-z][A-Za-z0-9]*)-)?(\d+)$/);
         if (km) {
@@ -85,10 +86,14 @@ export function openPalette() {
         } else {
           hits = await jira.searchIssues(searchJql(state.cfg.project, q), 12);
         }
-      } catch (e) { /* no match: e.g. the key doesn't exist */ }
+      } catch (e) {
+        // A key that doesn't exist is just no match; anything else (Jira down, bad query) must not
+        // look like "nothing found".
+        if (!(e.status === 404 && /^(?:[A-Za-z][A-Za-z0-9]*-)?\d+$/.test(q)) && !e.loginRequired) failed = "Jira search failed: " + e.message;
+      }
       if (activeModal() !== m || seq !== pal.seq) return;
       const seen = new Set(local.map((i) => i.key));
-      draw([...local, ...hits.filter((i) => !seen.has(i.key))].slice(0, 15), cmds, "");
+      draw([...local, ...hits.filter((i) => !seen.has(i.key))].slice(0, 15), cmds, failed);
     }, SEARCH_DELAY_MS);
   };
   input.addEventListener("input", query);

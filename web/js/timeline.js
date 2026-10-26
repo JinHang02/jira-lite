@@ -9,6 +9,7 @@ import { renderAdf, textToAdf, plainSafe, adfToText } from "./adf.js";
 import { buildTimeline, collapseRuns, wasEdited } from "./activity.js";
 import { actions } from "./actions.js";
 import { mentionsOf } from "./mentions.js";
+import { track } from "./drafts.js";
 import { attachMentions } from "./mentionpicker.js";
 
 const PENCIL = '<path d="M9.5 2.75l1.75 1.75-6.5 6.5-2.25.5.5-2.25z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>';
@@ -25,7 +26,7 @@ const isMine = (c) => !!(state.me && c.author && c.author.accountId === state.me
  * `olderHidden` how many older changes Jira didn't return. `jiraUrl` is the issue in Jira,
  * `attachments` its files (media in comments shows them).
  */
-export function renderActivity(issue, comments, histories, { olderHidden = 0, jiraUrl, attachments = [] } = {}) {
+export function renderActivity(issue, comments, histories, { olderHidden = 0, jiraUrl, attachments = [], resume = new Map() } = {}) {
   const f = issue.fields;
   const entries = collapseRuns(buildTimeline({ comments, histories, created: f.created, creator: f.creator || f.reporter }));
   const box = el("div", { class: "timeline" });
@@ -35,7 +36,7 @@ export function renderActivity(issue, comments, histories, { olderHidden = 0, ji
   if (note && (!entries.length || entries[0].type !== "created")) box.append(note);
   for (const e of entries) {
     if (e.type === "created") { box.append(line(e)); if (note) box.append(note); continue; }
-    if (e.type === "comment") box.append(commentCard(issue.key, e.comment, jiraUrl, attachments));
+    if (e.type === "comment") box.append(commentCard(issue.key, e.comment, jiraUrl, attachments, resume.get(String(e.comment.id))));
     else if (e.type === "more") {
       const id = issue.key + "|" + e.id;
       if (expanded.has(id)) box.append(...e.entries.map(line));
@@ -58,7 +59,7 @@ function line(e) {
     el("span", { class: "tl-text" }, el("span", { class: "tl-who" }, who), " " + e.text + " ", el("span", { class: "tl-sep" }, "·"), " ", when(e.at)));
 }
 
-function commentCard(key, c, jiraUrl, attachments) {
+function commentCard(key, c, jiraUrl, attachments, draft) {
   const body = el("div", { class: "cbody" }, renderAdf(c.body, { jiraUrl, attachments }));
   const edited = wasEdited(c) ? el("span", { class: "edited", title: "Edited " + new Date(c.updated).toLocaleString() }, "· edited") : null;
   const tools = el("span", { class: "ctools" });
@@ -72,6 +73,7 @@ function commentCard(key, c, jiraUrl, attachments) {
       : el("a", { class: "cbtn", href: jiraUrl + "?focusedCommentId=" + encodeURIComponent(c.id), target: "_blank", rel: "noopener",
         title: "Has formatting that plain-text editing would lose: edit in Jira", "aria-label": "Edit comment in Jira" }, icon(14, PENCIL, ""));
     if (editBtn.tagName === "BUTTON") editBtn.addEventListener("click", () => editComment(key, c, card, body));
+    if (draft && editBtn.tagName === "BUTTON") editComment(key, c, card, body, draft);  // unsaved before a sign-in
     const delBtn = el("button", { class: "cbtn", type: "button", title: "Delete comment", "aria-label": "Delete comment" }, icon(14, TRASH, ""));
     delBtn.addEventListener("click", () => confirmDelete(key, c, card, tools));
     tools.append(editBtn, delBtn);
@@ -97,12 +99,15 @@ async function commentWrite(run, okMsg, failMsg) {
 }
 
 /** Swaps the comment body for the composer; ⌘↵ saves, Esc cancels. */
-function editComment(key, c, card, body) {
+function editComment(key, c, card, body, draft) {
   if (card.dataset.editing) return;
   card.dataset.editing = "1";
   const ta = el("textarea", { "aria-label": "Edit comment" });
-  ta.value = adfToText(c.body);
-  const mentions = attachMentions(ta, mentionsOf(c.body));
+  const old = adfToText(c.body);
+  ta.value = draft ? draft.text : old;
+  const mentions = attachMentions(ta, draft && draft.mentions ? new Map(draft.mentions) : mentionsOf(c.body));
+  track(() => (ta.isConnected && ta.value.trim() !== old.trim()
+    ? { key, kind: "comment", id: String(c.id), text: ta.value, mentions: [...mentions] } : null));
   const save = el("button", { class: "btn primary", type: "button" }, "Save");
   const cancel = el("button", { class: "btn", type: "button" }, "Cancel");
   const msg = el("span", { class: "cmsg" }, "⌘↵ to save · esc to cancel");

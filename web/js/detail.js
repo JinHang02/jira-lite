@@ -25,6 +25,7 @@ import { openViewer } from "./viewer.js";
 import { setDisplay } from "./display.js";
 import { writes } from "./overlay.js";
 import { byCreated } from "./issues.js";
+import { track, parseDrafts, draftsFor } from "./drafts.js";
 
 const HASH_SVG = '<path d="M5.25 2.5l-1 9M9.75 2.5l-1 9M2.75 5.25h9M2.25 8.75h9" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>';
 const LINK_SVG = '<path d="M6 8a2.5 2.5 0 0 0 3.5.25l1.75-1.75a2.5 2.5 0 0 0-3.5-3.5l-.75.75M8 6a2.5 2.5 0 0 0-3.5-.25L2.75 7.5a2.5 2.5 0 0 0 3.5 3.5l.75-.75" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>';
@@ -121,15 +122,17 @@ export async function loadDetail() {
     const known = issueByKey(key);
     const guess = known && known.fields.issuetype ? known.fields.issuetype.id : null;
     let customs = await requiredCustoms(guess);
-    let [issue, comments, children, meta] = await Promise.all([
+    let [issue, comments, childPage, meta] = await Promise.all([
       jira.getIssueDetail(key, ["attachment", ...customs.map((c) => c.id)]),
       jira.getComments(key),
-      jira.searchIssues(childrenJql(key)).catch(() => []),
+      known && (known.fields.issuetype || {}).subtask ? { issues: [] }  // sub-tasks have no children: save the search
+        : jira.searchPage(childrenJql(key)).catch(() => ({ issues: [] })),
       editMeta(key, metaSig(known)),
     ]);
     if (stale()) return;
     // The search index may not list a just-created sub-issue (or still list a moved one) yet.
-    children = byCreated(writes.apply(children, (c) => !!c.fields.parent && c.fields.parent.key === key));
+    const children = byCreated(writes.apply(childPage.issues || [], (c) => !!c.fields.parent && c.fields.parent.key === key));
+    const childrenMore = jira.hasMore(childPage);  // over 100: only the first page is shown
     if (metaSig(issue) !== metaSig(known)) meta = await editMeta(key, metaSig(issue));
     const typeId = issue.fields.issuetype ? issue.fields.issuetype.id : null;
     if (typeId !== guess) {
@@ -145,7 +148,7 @@ export async function loadDetail() {
     const histories = log.histories || [];
     state.known.set(issue.key, issue);
     for (const c of children) state.known.set(c.key, c);
-    const args = [issue, comments, children, { customs, meta, histories, olderHidden: Math.max(0, (log.total || 0) - histories.length) }];
+    const args = [issue, comments, children, { customs, meta, histories, olderHidden: Math.max(0, (log.total || 0) - histories.length), childrenMore }];
     remember(issue.key, args);
     renderDetail(...args);
   } catch (e) {
@@ -221,7 +224,7 @@ function header(key, issue) {
     el("button", { class: "btn icon", type: "button", title: "Close (esc)", "aria-label": "Close", onclick: closeDetail }, icon(14, ICONS.close, "")));
 }
 
-function renderDetail(issue, comments, children, { customs, meta, histories, olderHidden }) {
+function renderDetail(issue, comments, children, { customs, meta, histories, olderHidden, childrenMore = false }) {
   const f = issue.fields;
   const d = $("#detail");
   // Don't clobber an inline editor (comment edit, labels, due date, delete confirm) on auto-refresh.
@@ -242,6 +245,7 @@ function renderDetail(issue, comments, children, { customs, meta, histories, old
     b.addEventListener("click", () => onclick(b));
     return b;
   };
+  const resumed = resumeDrafts(issue.key);  // editors open when the session ended (see drafts.js)
   const h1 = el("h1", { class: "dtitle", title: "Click to edit" }, f.summary);
   h1.addEventListener("click", () => editTitle(h1, issue.key, f.summary));
 
@@ -291,12 +295,12 @@ function renderDetail(issue, comments, children, { customs, meta, histories, old
     el("div", { class: "sec" }, "Description", el("span", { class: "spacer" }), descEdit),
     descHolder,
     renderAttachments(issue),
-    isSub ? null : el("div", { class: "sec" }, "Sub-issues" + (children.length ? " · " + done + "/" + children.length + " done" : ""),
+    isSub ? null : el("div", { class: "sec" }, "Sub-issues" + (children.length ? " · " + done + "/" + children.length + (childrenMore ? "+" : "") + " done" : ""),
       el("span", { class: "spacer" }),
       el("button", { class: "link", type: "button", onclick: () => actions.openCreate(issue) }, "+ Add sub-issue")),
     isSub || !children.length ? null : el("div", { class: "subs" }, subRows),
     el("div", { class: "sec" }, "Activity" + (comments.length ? " · " + comments.length + " comment" + (comments.length > 1 ? "s" : "") : "")),
-    renderActivity(issue, comments, histories, { olderHidden, jiraUrl, attachments }),
+    renderActivity(issue, comments, histories, { olderHidden, jiraUrl, attachments, resume: resumed.comments }),
     el("div", { class: "composer" }, box, el("div", { class: "crow" }, cmsg, send)));
 
   // Images (in the description, comments or the attachment list) open in the viewer, like Jira.
@@ -312,6 +316,12 @@ function renderDetail(issue, comments, children, { customs, meta, histories, old
   const body = el("div", { class: "dscroll", "data-key": issue.key }, main);
   d.replaceChildren(header(issue.key, issue), body);
   body.scrollTop = scrollTop;
+  // The title last: its editor saves on blur, so nothing may take the focus from it afterwards.
+  if (resumed.description) editDescription(descHolder, issue.key, f.description, resumed.description);
+  if (resumed.title) editTitle(h1, issue.key, f.summary, resumed.title);
+  const lost = [...resumed.comments.keys()].filter((id) => !body.querySelector('.card[data-cid="' + CSS.escape(id) + '"] .cedit'));
+  if (lost.length) toast("An unsaved comment edit couldn't be reopened (the comment is gone).", true);
+  if (resumed.title || resumed.description || resumed.comments.size) toast("Restored your unsaved edits from before signing in.");
   if (caret) {
     box.focus({ preventScroll: true });
     box.setSelectionRange(caret[0], caret[1]);
@@ -330,10 +340,28 @@ function stashedComment(key) {
   return "";
 }
 
-/** Swaps the title for a textarea; Enter or blur saves, Escape cancels. */
-function editTitle(h1, key, old) {
-  const ta = el("textarea", { class: "dtitle", rows: "1", "aria-label": "Title" });
-  ta.value = old;
+/**
+ * Editor drafts stashed for `key` before a sign-in round trip (auth.requireLogin):
+ * {title?: draft, description?: draft, comments: Map(commentId -> draft)}. Others' are kept.
+ */
+function resumeDrafts(key) {
+  const { mine, rest } = draftsFor(parseDrafts(unstash("editDrafts")), key);
+  if (rest.length) stash("editDrafts", JSON.stringify(rest));
+  const out = { comments: new Map() };
+  for (const dr of mine) {
+    if (dr.kind === "comment") out.comments.set(dr.id, dr);
+    else out[dr.kind] = dr;
+  }
+  return out;
+}
+
+/** Swaps the title for a textarea; Enter or blur saves, Escape cancels. `draft` reopens unsaved text. */
+function editTitle(h1, key, old, draft) {
+  const ta = el("textarea", { class: "dtitle", rows: "1", "aria-label": "Title", "data-editing": "1" });
+  ta.value = draft ? draft.text : old;
+  let saving = null;  // the title being saved: kept as a draft if that very save finds the session ended
+  track(() => (saving !== null ? { key, kind: "title", text: saving }
+    : ta.isConnected && ta.value !== old ? { key, kind: "title", text: ta.value } : null));
   const fit = () => { ta.style.height = "auto"; ta.style.height = ta.scrollHeight + "px"; };
   ta.addEventListener("input", fit);
   h1.replaceWith(ta);
@@ -348,7 +376,8 @@ function editTitle(h1, key, old) {
     if (save && v && v !== old) {
       h1.textContent = v;
       ta.replaceWith(h1);
-      updateFields(key, { summary: v }, key + " title updated");
+      saving = v;
+      updateFields(key, { summary: v }, key + " title updated").finally(() => { saving = null; });
     } else ta.replaceWith(h1);
   };
   ta.addEventListener("keydown", (e) => {
@@ -363,14 +392,22 @@ function editTitle(h1, key, old) {
  * panels…) appear as ⟦n · …⟧ lines and are saved back unchanged; deleting such a line removes it.
  * Pasted or dropped images are uploaded and embedded (descimages.js).
  */
-function editDescription(holder, key, doc) {
-  const { text: original, kept } = toMarkdown(doc);
+function editDescription(holder, key, doc, draft) {
+  // A draft from before a sign-in brings the ⟦n⟧ blocks and the text it started from, so its
+  // placeholders still mean the same even if the description changed in Jira meanwhile.
+  const now = toMarkdown(doc);
+  const original = draft && draft.kept ? draft.base || "" : now.text;
+  const kept = draft && draft.kept ? draft.kept : now.kept;
+  const changed = !!draft && original !== now.text;
   const ta = el("textarea", { class: "mdedit", placeholder: "Add a description… Markdown works: **bold**, _italic_, - lists, `code`, [link](url)", "aria-label": "Description" });
-  ta.value = original;
-  const mentions = attachMentions(ta, mentionsOf(doc));
+  ta.value = draft ? draft.text : original;
+  const mentions = attachMentions(ta, draft && draft.mentions ? new Map(draft.mentions) : mentionsOf(doc));
+  track(() => (ta.isConnected && ta.value !== original
+    ? { key, kind: "description", text: ta.value, kept, base: original, mentions: [...mentions] } : null));
   const save = el("button", { class: "btn primary", type: "button" }, "Save");
   const cancel = el("button", { class: "btn", type: "button" }, "Cancel");
-  const hint = "Markdown · paste or drop images · " + (kept.length ? "⟦…⟧ parts stay as they are · " : "") + "⌘↵ to save";
+  const hint = (changed ? "Changed in Jira since you started: saving replaces it · " : "") +
+    "Markdown · paste or drop images · " + (kept.length ? "⟦…⟧ parts stay as they are · " : "") + "⌘↵ to save";
   const msg = el("span", { class: "cmsg" }, hint);
   let uploading = 0, uploaded = false;
   const image = bindImages(ta, key, kept, (n) => {

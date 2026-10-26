@@ -44,7 +44,8 @@ test("childProgress: an epic's child issues from the sidebar counts, else sub-ta
   const task = { key: "A-2", fields: { subtasks: [{ fields: { status: done } }, { fields: { status: todo } }] } };
   assert.deepEqual(childProgress(task, []), { done: 1, total: 2, epic: false });
   const epic = { key: "A-1", fields: { subtasks: [] } };
-  assert.deepEqual(childProgress(epic, [{ key: "A-1", done: 3, total: 8 }]), { done: 3, total: 8, epic: true });
+  assert.deepEqual(childProgress(epic, [{ key: "A-1", done: 3, total: 8 }]), { done: 3, total: 8, epic: true, more: false });
+  assert.equal(childProgress(epic, [{ key: "A-1", done: 3, total: 500, more: true }]).more, true);
   assert.deepEqual(childProgress(epic, [{ key: "A-1", done: 0, total: 0 }]), { done: 0, total: 0, epic: false });
   assert.equal(childProgress({ key: "A-3", fields: {} }, undefined).total, 0);
 });

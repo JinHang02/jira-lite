@@ -219,10 +219,15 @@ export async function loadEpics() {
     const epics = writes.apply(page.issues || [], openEpic);
     const keys = epics.map((e) => e.key);
     let kids = [];
-    for (const part of chunk(keys)) kids.push(...await jira.searchFields(epicChildrenJql(part), ["status", "parent"]));
+    const partial = new Set();  // epics whose children were cut off at the page limit
+    for (const part of chunk(keys)) {
+      const r = await jira.searchPages(epicChildrenJql(part), { fields: ["status", "parent"] });
+      kids.push(...r.issues);
+      if (r.more) part.forEach((k) => partial.add(k));
+    }
     kids = writes.apply(kids, (i) => !!i.fields.parent && keys.includes(i.fields.parent.key));
     if (seq !== epicsSeq) return;
-    state.epics = epicEntries(epics, epicProgress(keys, kids));
+    state.epics = epicEntries(epics, epicProgress(keys, kids), partial);
     for (const e of state.epics) state.epicInfo.set(e.key, { key: e.key, summary: e.summary });
     state.epicsState = "ok";
     if (state.loaded) actions.renderMain();  // epic rows' "2/5" badges count these children
@@ -365,7 +370,7 @@ function epicNav(e) {
   return el("button", {
     class: "nav epic" + (on ? " on" : ""), "aria-current": on ? "page" : null, "data-epic": e.key,
     title: e.key + " · " + e.summary + (e.total ? " — " + e.done + " of " + e.total + " done" : " — no child issues"), onclick: () => setEpic(e.key),
-  }, ring(e.done, e.total), el("span", { class: "ename" }, e.summary), el("span", { class: "frac" }, e.total ? e.done + "/" + e.total : ""));
+  }, ring(e.done, e.total), el("span", { class: "ename" }, e.summary), el("span", { class: "frac" }, e.total ? e.done + "/" + e.total + (e.more ? "+" : "") : ""));
 }
 
 /** "People" header (collapsible), filter box, up to PEOPLE_LIMIT people and "Show all (N)". */

@@ -8,7 +8,9 @@
 async (page) => {
   const APP = "http://localhost:8900", MOCK = "http://127.0.0.1:9900";
   const out = [], consoleErrors = [];
-  const expected = [/issue\/DEMO-5 .*400|DEMO-5:0/, /status of 400 \(Bad Request\)/];  // the refused Task → Epic change
+  const expected = [/issue\/DEMO-5 .*400|DEMO-5:0/, /status of 400 \(Bad Request\)/,  // the refused Task → Epic change
+    /status of 401 \(Unauthorized\)/,  // the simulated end of a session
+    /status of 503/, /status of 404 \(Not Found\)/];  // the ⌘K search failure / missing key checks
   page.on("console", (m) => { if (m.type() === "error") consoleErrors.push(m.text()); });
   const expect = (ok, msg) => { if (!ok) throw new Error(msg); };
   // Under run_browser.mjs: E2E_ONLY=<regex> runs only matching checks (plus "setup" ones);
@@ -540,6 +542,83 @@ async (page) => {
     await fullRefresh();
     expect(await page.evaluate(() => !document.querySelector('#list .row[data-key="DEMO-6"]') && !!document.querySelector('#list .row[data-key="DEMO-23"]')), "list wrong after catch-up");
     expect((await page.request.post(MOCK + "/__mock/config?indexLagMs=0")).status() === 204, "lag off");
+  });
+
+  await check("edge: session ends mid-edit — title, description and comment edits come back after signing in", async () => {
+    await open("DEMO-4");
+    await page.locator('#detail button[aria-label="Edit comment"]').first().click();
+    await page.locator("#detail .cedit textarea").fill("Comment edit in progress");
+    await page.locator("#detail .sec .link", { hasText: /^(Edit|Add)$/ }).click();
+    const md = page.locator("#detail textarea.mdedit");
+    await md.fill((await md.inputValue()) + "\n\nDescription edit in progress");
+    // The next title save finds the session over: the server's "sign in again" 401.
+    await page.route("**/jira/issue/DEMO-4", (r) => (r.request().method() === "PUT"
+      ? r.fulfill({ status: 401, headers: { "X-Jira-Lite-Auth": "login", "Content-Type": "application/json" }, body: "{}" }) : r.continue()));
+    await page.click("#detail h1.dtitle");
+    await page.fill("#detail textarea.dtitle", "Title edit in progress"); await page.keyboard.press("Enter");
+    await page.waitForSelector("#signin");
+    await page.unroute("**/jira/issue/DEMO-4");
+    await page.reload();  // back from Atlassian's sign-in
+    await page.waitForSelector('#detail .dscroll[data-key="DEMO-4"] textarea.mdedit');
+    const r = await page.evaluate(() => ({
+      title: document.querySelector("#detail textarea.dtitle")?.value,
+      desc: document.querySelector("#detail textarea.mdedit")?.value,
+      comment: document.querySelector("#detail .cedit textarea")?.value,
+      kept: !!sessionStorage.getItem("jl.editDrafts"),
+    }));
+    expect(r.title === "Title edit in progress", "title " + r.title);
+    expect((r.desc || "").endsWith("Description edit in progress") && /⟦\d+ · /.test(r.desc), "description " + JSON.stringify(r.desc));
+    expect(r.comment === "Comment edit in progress", "comment " + r.comment);
+    expect(!r.kept, "drafts left in sessionStorage");
+    expect(!(await writes()).some((w) => w.method === "PUT" && w.path.endsWith("/DEMO-4")), "a restored editor saved on its own");
+    if (env.E2E_SHOTS) await page.screenshot({ path: env.E2E_SHOTS + "/drafts-restored.png" });
+    await page.keyboard.press("Escape");
+    await page.goto(APP + "/");
+  });
+
+  await check("edge: cut-off lists say so — '5+' issues, '1+' sub-issues, epic progress 'n+'", async () => {
+    // Pages of 1: the list's 5-page load stops at 5 of 11, DEMO-4's first sub-issue page at 1 of 3,
+    // and the epics' children search at 5 (each epic gets 6 more children first).
+    expect((await page.request.post(MOCK + "/__mock/reset")).status() === 204, "reset");
+    for (const epic of ["DEMO-1", "DEMO-2", "DEMO-3"]) {
+      for (let n = 0; n < 6; n++) {
+        const r = await page.request.post(MOCK + "/rest/api/3/issue", { headers: { Authorization: "Basic x" }, data: { fields: {
+          project: { key: "DEMO" }, issuetype: { name: "Task" }, summary: "Child " + n + " of " + epic, parent: { key: epic },
+          customfield_10050: { id: "10100" }, fixVersions: [{ id: "10201" }] } } });
+        expect(r.status() === 201, "create child " + r.status() + " " + (await r.text()));
+      }
+    }
+    expect((await page.request.post(MOCK + "/__mock/config?maxPage=1&indexLagMs=0")).status() === 204, "config");
+    try {
+      await page.goto(APP + "/?cut=" + Date.now() + "#DEMO-4");  // a real load (a hash-only change wouldn't reload)
+      await page.waitForSelector('#detail .dscroll[data-key="DEMO-4"] .pblock');
+      await until(() => document.querySelector("#count")?.textContent === "5+");
+      expect(/most recently updated/.test(await page.getAttribute("#count", "title")), "no tooltip on the count");
+      const subs = await page.locator("#detail .sec", { hasText: "Sub-issues" }).textContent();
+      expect(/1\/1\+ done/.test(subs), "sub-issues header " + subs);
+      await until(() => /\d+\/\d+\+/.test(document.querySelector("#side")?.textContent || ""));
+      if (env.E2E_SHOTS) await page.screenshot({ path: env.E2E_SHOTS + "/cutoff-counts.png" });
+    } finally {
+      await page.request.post(MOCK + "/__mock/config?maxPage=100");
+    }
+    await page.goto(APP + "/?uncut=" + Date.now());
+    await page.waitForSelector("#list .row");
+    expect((await page.textContent("#count")) === "11", "count without a cut-off " + (await page.textContent("#count")));
+  });
+  await check("edge: ⌘K search shows a Jira failure instead of 'No results'; a missing key is just no match", async () => {
+    await page.route("**/jira/search/jql", (r) => (/text ~/.test(r.request().postData() || "")
+      ? r.fulfill({ status: 503, contentType: "application/json", body: '{"errorMessages":["Search is down"]}' }) : r.continue()));
+    try {
+      await page.keyboard.press("Meta+k");
+      await page.fill(".palette .pinput", "zebra");
+      await until(() => /Jira search failed: Search is down/.test(document.querySelector(".palette")?.textContent || ""));
+      await page.fill(".palette .pinput", "DEMO-999");
+      await until(() => /No results/.test(document.querySelector(".palette")?.textContent || ""));
+      expect(!/failed/.test(await page.textContent(".palette")), "a missing key reported as a failure");
+      await page.keyboard.press("Escape");
+    } finally {
+      await page.unroute("**/jira/search/jql");
+    }
   });
 
   // ---- themes and sizes ----

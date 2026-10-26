@@ -7,7 +7,7 @@ export const EPIC_LIMIT = 50;
 /** Epics listed before "Show all (N)". */
 export const EPIC_SHOWN = 8;
 /** Parent keys per `parent in (...)` progress search (keeps the JQL short). */
-export const CHUNK = 50;
+const CHUNK = 50;
 
 /** The project's open epics, most recently updated first. */
 export function epicsJql(project) {
@@ -42,11 +42,16 @@ export function epicProgress(keys, children) {
   return out;
 }
 
-/** Sidebar entries: [{key, summary, status, done, total}] from the epics search and the progress map. */
-export function epicEntries(epics, progress) {
+/**
+ * Sidebar entries: [{key, summary, status, done, total, more}] from the epics search and the
+ * progress map; `more` for the epics in `partial` (their children search was cut off, so the
+ * counts are a lower bound).
+ */
+export function epicEntries(epics, progress, partial = new Set()) {
   return (epics || []).map((e) => {
     const p = (progress && progress.get(e.key)) || { done: 0, total: 0 };
-    return { key: e.key, summary: (e.fields || {}).summary || e.key, status: (e.fields || {}).status || null, done: p.done, total: p.total };
+    return { key: e.key, summary: (e.fields || {}).summary || e.key, status: (e.fields || {}).status || null, done: p.done, total: p.total,
+      more: partial.has(e.key) };
   });
 }
 
