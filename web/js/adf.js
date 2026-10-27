@@ -186,20 +186,3 @@ export function textToAdf(text, mentions) {
     }),
   };
 }
-
-/** A mention node that round-trips through "@Name" text (see mentions.mentionsOf). */
-const plainMention = (n) => n.type === "mention" && !!(n.attrs && n.attrs.id && /^@\S/.test(n.attrs.text || ""));
-
-/** True if editing this doc as plain text loses nothing (no formatting, lists, code, media...). */
-export function plainSafe(doc) {
-  const ok = (n) => ["doc", "paragraph", "hardBreak"].includes(n.type) ? (n.content || []).every(ok)
-    : (n.type === "text" && !(n.marks || []).length) || plainMention(n);
-  return !doc || ok(doc);
-}
-
-/** Inverse of textToAdf for plainSafe docs (mentions become their "@Name" text). */
-export function adfToText(doc) {
-  if (!doc) return "";
-  const inline = (n) => n.type === "hardBreak" ? "\n" : n.type === "mention" ? (n.attrs || {}).text || "" : n.text || "";
-  return (doc.content || []).map((p) => (p.content || []).map(inline).join("")).join("\n\n");
-}

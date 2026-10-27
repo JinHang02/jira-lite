@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mentionQuery, matchPeople, insertMention, splitMentions, mentionsOf, mentionToken, MAX_QUERY } from "../../web/js/mentions.js";
-import { textToAdf, adfToText, plainSafe } from "../../web/js/adf.js";
+import { textToAdf } from "../../web/js/adf.js";
 
 const ALICE = { accountId: "a1", displayName: "Alice Nguyen" };
 const AL = { accountId: "a2", displayName: "Al Gore" };
@@ -76,21 +76,12 @@ test("textToAdf without a map keeps '@' as text (unchanged behaviour)", () => {
   assert.deepEqual(textToAdf("hi @Alice Nguyen").content[0].content, [{ type: "text", text: "hi @Alice Nguyen" }]);
 });
 
-test("mentions round-trip: plainSafe, adfToText, mentionsOf, textToAdf", () => {
+test("mentions round-trip: mentionsOf, textToAdf", () => {
   const doc = { type: "doc", version: 1, content: [{ type: "paragraph", content: [
     { type: "text", text: "cc " }, { type: "mention", attrs: { id: "a1", text: "@Alice Nguyen", accessLevel: "" } }, { type: "text", text: " ok" }] }] };
-  assert.equal(plainSafe(doc), true);
-  const text = adfToText(doc);
-  assert.equal(text, "cc @Alice Nguyen ok");
+  const text = "cc @Alice Nguyen ok";
   const map = mentionsOf(doc);
   assert.deepEqual([...map], [["@Alice Nguyen", "a1"]]);
   const again = textToAdf(text, map);
   assert.deepEqual(again.content[0].content[1], { type: "mention", attrs: { id: "a1", text: "@Alice Nguyen" } });
-});
-
-test("plainSafe: a mention without usable text or id is not plain", () => {
-  const p = (n) => ({ type: "doc", content: [{ type: "paragraph", content: [n] }] });
-  assert.equal(plainSafe(p({ type: "mention", attrs: { id: "a1", text: "" } })), false);
-  assert.equal(plainSafe(p({ type: "mention", attrs: { text: "@A" } })), false);
-  assert.equal(plainSafe(p({ type: "mention" })), false);
 });

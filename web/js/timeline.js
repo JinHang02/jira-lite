@@ -5,7 +5,9 @@ import { state } from "./state.js";
 import { el, icon, toast } from "./dom.js";
 import { ago } from "./format.js";
 import { avatar } from "./icons.js";
-import { renderAdf, textToAdf, plainSafe, adfToText } from "./adf.js";
+import { renderAdf } from "./adf.js";
+import { toMarkdown, fromMarkdown } from "./markdown.js";
+import { bindImages } from "./descimages.js";
 import { buildTimeline, collapseRuns, wasEdited } from "./activity.js";
 import { actions } from "./actions.js";
 import { mentionsOf } from "./mentions.js";
@@ -68,12 +70,9 @@ function commentCard(key, c, jiraUrl, attachments, draft) {
       el("span", { class: "spacer" }), tools),
     body);
   if (isMine(c)) {
-    const editBtn = plainSafe(c.body)
-      ? el("button", { class: "cbtn", type: "button", title: "Edit comment", "aria-label": "Edit comment" }, icon(14, PENCIL, ""))
-      : el("a", { class: "cbtn", href: jiraUrl + "?focusedCommentId=" + encodeURIComponent(c.id), target: "_blank", rel: "noopener",
-        title: "Has formatting that plain-text editing would lose: edit in Jira", "aria-label": "Edit comment in Jira" }, icon(14, PENCIL, ""));
-    if (editBtn.tagName === "BUTTON") editBtn.addEventListener("click", () => editComment(key, c, card, body));
-    if (draft && editBtn.tagName === "BUTTON") editComment(key, c, card, body, draft);  // unsaved before a sign-in
+    const editBtn = el("button", { class: "cbtn", type: "button", title: "Edit comment", "aria-label": "Edit comment" }, icon(14, PENCIL, ""));
+    editBtn.addEventListener("click", () => editComment(key, c, card, body));
+    if (draft) editComment(key, c, card, body, draft);  // unsaved before a sign-in
     const delBtn = el("button", { class: "cbtn", type: "button", title: "Delete comment", "aria-label": "Delete comment" }, icon(14, TRASH, ""));
     delBtn.addEventListener("click", () => confirmDelete(key, c, card, tools));
     tools.append(editBtn, delBtn);
@@ -98,35 +97,57 @@ async function commentWrite(run, okMsg, failMsg) {
   }
 }
 
-/** Swaps the comment body for the composer; ⌘↵ saves, Esc cancels. */
+/**
+ * Swaps the comment body for a Markdown editor, like the description's (see detail.editDescription):
+ * parts Markdown can't hold are ⟦n · …⟧ lines saved back unchanged; images can be pasted or dropped.
+ * ⌘↵ saves, Esc cancels.
+ */
 function editComment(key, c, card, body, draft) {
   if (card.dataset.editing) return;
   card.dataset.editing = "1";
+  // A draft from before a sign-in brings its own ⟦n⟧ blocks and the text it started from.
+  const now = toMarkdown(c.body);
+  const original = draft && draft.kept ? draft.base || "" : now.text;
+  const kept = draft && draft.kept ? draft.kept : now.kept;
   const ta = el("textarea", { "aria-label": "Edit comment" });
-  const old = adfToText(c.body);
-  ta.value = draft ? draft.text : old;
+  ta.value = draft ? draft.text : original;
   const mentions = attachMentions(ta, draft && draft.mentions ? new Map(draft.mentions) : mentionsOf(c.body));
-  track(() => (ta.isConnected && ta.value.trim() !== old.trim()
-    ? { key, kind: "comment", id: String(c.id), text: ta.value, mentions: [...mentions] } : null), () => !ta.isConnected);
+  track(() => (ta.isConnected && ta.value !== original
+    ? { key, kind: "comment", id: String(c.id), text: ta.value, kept, base: original, mentions: [...mentions] } : null), () => !ta.isConnected);
   const save = el("button", { class: "btn primary", type: "button" }, "Save");
   const cancel = el("button", { class: "btn", type: "button" }, "Cancel");
-  const msg = el("span", { class: "cmsg" }, "⌘↵ to save · esc to cancel");
-  const editor = el("div", { class: "composer cedit" }, ta, el("div", { class: "crow" }, msg, cancel, save));
+  const hint = "Markdown · paste or drop images · " + (kept.length ? "⟦…⟧ parts stay as they are · " : "") + "⌘↵ to save · esc to cancel";
+  const msg = el("span", { class: "cmsg" }, hint);
+  let uploading = 0, uploaded = false;
+  const image = bindImages(ta, key, kept, (n) => {
+    uploading = n;
+    uploaded = uploaded || n > 0;
+    save.disabled = n > 0;
+    msg.textContent = n ? "Uploading " + n + " image" + (n > 1 ? "s" : "") + "…" : hint;
+  });
+  const editor = el("div", { class: "composer cedit" }, ta, el("div", { class: "crow" }, msg, image, cancel, save));
   const view = body.firstChild;
   body.replaceChildren(editor);
+  const fit = () => { ta.style.height = "auto"; ta.style.height = Math.min(Math.max(ta.scrollHeight + 2, 80), innerHeight * 0.6) + "px"; };
+  ta.addEventListener("input", fit);
+  fit();
   ta.focus();
   ta.setSelectionRange(ta.value.length, ta.value.length);
-  const close = () => { delete card.dataset.editing; body.replaceChildren(view); };
+  const close = () => {
+    delete card.dataset.editing;
+    body.replaceChildren(view);
+    if (uploaded) actions.loadDetail();  // show the new attachments
+  };
   const commit = async () => {
-    const text = ta.value.trim();
-    if (save.disabled) return;
-    if (!text) { msg.textContent = "A comment can't be empty. Delete it instead."; return; }
-    if (text === adfToText(c.body).trim()) return close();
+    if (uploading || save.disabled) return;  // image lines not in yet, or already saving (⌘↵ twice)
+    if (ta.value === original) return close();
+    const text = ta.value.replace(/^\s*\n/, "").trimEnd();  // keep the first line's indent
+    if (!text.trim()) { msg.textContent = "A comment can't be empty. Delete it instead."; return; }
     save.disabled = true;
     msg.textContent = "Saving…";
     delete card.dataset.editing;  // let the reload re-render the card
-    const ok = await commentWrite(() => jira.updateComment(key, c.id, textToAdf(text, mentions)), "Comment updated", "Couldn't update the comment: ");
-    if (!ok) { card.dataset.editing = "1"; save.disabled = false; msg.textContent = "⌘↵ to save · esc to cancel"; }
+    const ok = await commentWrite(() => jira.updateComment(key, c.id, fromMarkdown(text, { kept, mentions })), "Comment updated", "Couldn't update the comment: ");
+    if (!ok) { card.dataset.editing = "1"; save.disabled = false; msg.textContent = hint; }
   };
   cancel.addEventListener("click", close);
   save.addEventListener("click", commit);

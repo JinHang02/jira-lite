@@ -89,8 +89,8 @@ Start the mock with `--index-lag-ms 5000` (search trails writes by 5 s, like Jir
 
 ## Comments
 - [ ] `m` focuses the composer; ⌘↵ posts; new card at the bottom, panel scrolls down; mock got ADF from the text.
-- [ ] Own plain comment: pencil → edit → ⌘↵ saves, card shows "· edited"; Esc cancels; empty text refuses with a message.
-- [ ] Own rich comment (DEMO-6): pencil is an "edit in Jira" link. Others' comments have no tools.
+- [ ] Own comment: pencil → Markdown editor (like the description) → ⌘↵ saves, card shows "· edited"; Esc cancels; empty text refuses with a message; pasted/dropped images embed.
+- [ ] Own rich comment (DEMO-6): edits in place too — formatting shows as Markdown, parts it can't hold as ⟦n · …⟧ lines that save back unchanged. Others' comments have no tools.
 - [ ] Trash → inline "Delete this comment?" → Cancel restores, Delete removes (`DELETE …/comment/{id}` → 204).
 - [ ] Unsent comment text survives an auto-refresh.
 

@@ -296,6 +296,17 @@ async (page) => {
     if (await confirm.count()) await confirm.first().click();
     await until(() => !document.querySelector("#detail").textContent.includes("E2E comment edited"));
   });
+  await check("comments: a rich comment edits in place as Markdown and keeps its formatting", async () => {
+    await open("DEMO-6");
+    await page.locator('#detail button[aria-label="Edit comment"]').click();
+    const ta = page.locator("#detail .cedit textarea");
+    expect((await ta.inputValue()) === "Fixed the regex, see `EMAIL_RE` in the PR.", "markdown " + (await ta.inputValue()));
+    await ta.fill("Fixed the regex, see `EMAIL_RE` in the **merged** PR."); await ta.press("Meta+Enter");
+    await until(() => document.querySelector("#detail .cbody b")?.textContent === "merged");
+    const marks = JSON.stringify((await lastWrite("PUT", "/DEMO-6/comment/")).body.body);
+    expect(marks.includes('"code"') && marks.includes('"strong"'), "PUT body " + marks);
+    await open("DEMO-4");  // the next checks work on DEMO-4
+  });
   await check("sub-issues: status change, create one, upload attachment", async () => {
     await page.locator("#detail .subrow", { hasText: "DEMO-33" }).locator(".ibtn").click();
     await page.locator(".menu .mi", { hasText: "In Progress" }).click();
@@ -570,7 +581,7 @@ async (page) => {
     await page.waitForSelector("#signin");
     await page.unroute("**/jira/issue/DEMO-4");
     await page.reload();  // back from Atlassian's sign-in
-    await page.waitForSelector('#detail .dscroll[data-key="DEMO-4"] textarea.mdedit');
+    await page.waitForSelector('#detail .dscroll[data-key="DEMO-4"] :not(.cedit) > textarea.mdedit');
     const r = await page.evaluate(() => ({
       title: document.querySelector("#detail textarea.dtitle")?.value,
       desc: document.querySelector("#detail textarea.mdedit")?.value,

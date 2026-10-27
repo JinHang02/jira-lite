@@ -234,8 +234,8 @@ a.atttile:hover { text-decoration: none; background: var(--bg-hover); }
 .mcheck { width: 14px; height: 14px; flex: none; display: inline-grid; place-items: center; border: 1px solid var(--faint); border-radius: 4px; color: #fff; }
 .mcheck.on { background: var(--accent); border-color: var(--accent); }
 .mfoot { border-top: 1px solid var(--border-faint); margin-top: 4px; font-weight: 400; }
-.composer textarea.mdedit { resize: none; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; line-height: 1.6; }
-.composer textarea.mdedit.dropping { outline: 2px dashed var(--accent); outline-offset: 4px; border-radius: 4px; }
+.composer textarea.mdedit, .cedit textarea { resize: none; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; line-height: 1.6; }
+.composer textarea.mdedit.dropping, .cedit textarea.dropping { outline: 2px dashed var(--accent); outline-offset: 4px; border-radius: 4px; }
 
 .label { max-width: 100%; min-width: 0; }
 .label .ltext { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
