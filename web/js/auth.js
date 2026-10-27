@@ -6,6 +6,7 @@ import { logo } from "./icons.js";
 import { closeMenu } from "./menu.js";
 import { closeModal } from "./modal.js";
 import { stashCreateDraft } from "./create.js";
+import { snapshotAll } from "./drafts.js";
 
 const SIGNIN_ICON = '<path d="M6.5 2.5h-2a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2M10 5l3 3-3 3M13 8H6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>';
 
@@ -36,14 +37,16 @@ export function showSignIn() {
 }
 
 /**
- * The session ended mid-use (an API call said "login required"): keep unsent drafts and the
- * open issue in sessionStorage for after the sign-in round trip, then show the sign-in screen.
+ * The session ended mid-use (an API call said "login required"): keep unsent drafts, the text of
+ * open editors and the open issue in sessionStorage for after the sign-in round trip, then show the sign-in screen.
  */
 export function requireLogin() {
   if (state.signedOut) return;
   state.signedOut = true;
   const box = $("#cbox");
   if (box && box.value.trim()) stash("commentDraft", JSON.stringify({ key: box.dataset.key, text: box.value }));
+  const edits = snapshotAll();  // open title / description / comment editors
+  if (edits.length) stash("editDrafts", JSON.stringify(edits));
   closeMenu();
   closeModal();  // the create dialog keeps its draft on close
   stashCreateDraft();

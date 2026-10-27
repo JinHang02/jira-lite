@@ -47,6 +47,7 @@ class AtlassianState:
             self.valid_refresh = set()  # type: set
             self.refresh_count = 0
             self.refresh_delay = 0.0
+            self.refresh_status = 0  # when set, refreshes answer this status (e.g. 429 rate limited)
             self.reject_all_access = False  # API answers 401 to every token (app access revoked)
             self.expires_in = 3600
             self.resources = [{"id": "other-cloud", "url": "https://other.atlassian.net", "name": "other"},
@@ -117,6 +118,8 @@ class _Handler(BaseHTTPRequestHandler):
             return self._json(200, state.issue())
         if grant == "refresh_token":
             time.sleep(state.refresh_delay)
+            if state.refresh_status:
+                return self._json(state.refresh_status, {"error": "rate_limited"})
             with state.lock:
                 token = form.get("refresh_token")
                 if token not in state.valid_refresh:

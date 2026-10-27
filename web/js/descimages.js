@@ -4,7 +4,7 @@
 import * as jira from "./api.js";
 import { el, toast } from "./dom.js";
 import { keepBlock } from "./markdown.js";
-import { pastedName, imageNode, isImage } from "./attachments.js";
+import { pastedName, imageNode, isImage, uploadBatch, MAX_BODY } from "./attachments.js";
 
 const imageSize = (file) => createImageBitmap(file).then((b) => ({ width: b.width, height: b.height }), () => null);
 
@@ -29,7 +29,8 @@ export function bindImages(ta, key, kept, onBusy) {
     return text;
   };
   const swap = (mark, text) => {
-    ta.value = text ? ta.value.replace(mark, text) : ta.value.replace(mark + "\n", "").replace(mark, "");
+    // A function replacement: a file name's "$&" or "$'" must not be read as a pattern.
+    ta.value = text ? ta.value.replace(mark, () => text) : ta.value.replace(mark + "\n", "").replace(mark, "");
     ta.dispatchEvent(new Event("input"));
   };
 
@@ -61,9 +62,15 @@ export function bindImages(ta, key, kept, onBusy) {
     }
   };
   const add = (files) => {
+    // Each image is its own upload; the other files go up together (see attachOnly).
     const imgs = files.filter((f) => isImage({ mimeType: f.type, filename: f.name }));
-    const others = files.filter((f) => !imgs.includes(f));
-    imgs.forEach(embed);
+    const fits = imgs.filter((f) => uploadBatch([f]).ok.length);
+    const { ok: others, tooBig } = uploadBatch(files.filter((f) => !imgs.includes(f)));
+    const refused = [...imgs.filter((f) => !fits.includes(f)), ...tooBig];
+    if (refused.length) {
+      toast("Too large to attach here (max " + Math.floor(MAX_BODY / 1048576) + " MB per upload): " + refused.map((f) => f.name).join(", ") + ". Use Jira for big files.", true);
+    }
+    fits.forEach(embed);
     if (others.length) attachOnly(others);
   };
 

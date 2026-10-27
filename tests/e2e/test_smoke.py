@@ -158,7 +158,7 @@ class E2ETestCase(unittest.TestCase):
         return self.jira("POST", "search/jql", body)
 
     def search_all(self, jql: str, max_results: int = 100, max_pages: int = 50) -> Tuple[List[Dict[str, Any]], int]:
-        """api.searchAll: follows nextPageToken. Returns (issues, pages)."""
+        """api.searchPages: follows nextPageToken. Returns (issues, pages)."""
         out = []  # type: List[Dict[str, Any]]
         token = None
         for page in range(1, max_pages + 1):
@@ -398,6 +398,34 @@ class WriteTest(E2ETestCase):
         self.assertIn("labels", err["errors"])
         err = self.jira("PUT", "issue/DEMO-5", {"fields": {"description": "plain string"}}, expect=400)
         self.assertIn("Atlassian Document", err["errors"]["description"])
+
+    def test_update_verbs_keep_concurrent_list_changes(self) -> None:
+        # Someone else adds a label after our copy was loaded; our add/remove must not drop it.
+        before = self.issue("DEMO-5", ["labels"])["fields"]["labels"]
+        self.jira("PUT", "issue/DEMO-5", {"update": {"labels": [{"add": "theirs"}]}}, expect=204)
+        self.jira("PUT", "issue/DEMO-5", {"update": {"labels": [{"add": "ours"}, {"remove": before[0]}]}}, expect=204)
+        self.assertEqual(self.issue("DEMO-5", ["labels"])["fields"]["labels"], before[1:] + ["theirs", "ours"])
+        self.jira("PUT", "issue/DEMO-5", {"update": {"fixVersions": [{"add": {"id": "10201"}}]}}, expect=204)
+        self.jira("PUT", "issue/DEMO-5", {"update": {"components": [{"add": {"id": "10302"}}, {"remove": {"id": "10302"}}]}}, expect=204)
+        f = self.issue("DEMO-5", ["fixVersions", "components"])["fields"]
+        self.assertIn("10201", [v["id"] for v in f["fixVersions"]])
+        self.assertNotIn("10302", [c["id"] for c in f["components"]])
+        err = self.jira("PUT", "issue/DEMO-5", {"fields": {"labels": []}, "update": {"labels": [{"add": "x"}]}}, expect=400)
+        self.assertIn("labels", err["errors"])
+        err = self.jira("PUT", "issue/DEMO-5", {"update": {"labels": [{"add": "two words"}]}}, expect=400)
+        self.assertIn("labels", err["errors"])
+
+    def test_search_index_lag_hides_writes_from_search_only(self) -> None:
+        _Env.mock.jira.index_lag = 60.0
+        try:
+            self.jira("PUT", "issue/DEMO-5", {"fields": {"summary": "Fresh title"}}, expect=204)
+            hit = self.search_page(children_jql("DEMO-1"))["issues"]
+            self.assertNotIn("Fresh title", [i["fields"]["summary"] for i in hit])  # search: the old copy
+            self.assertEqual(self.issue("DEMO-5", ["summary"])["fields"]["summary"], "Fresh title")  # by key: current
+        finally:
+            _Env.mock.jira.index_lag = 0.0
+        hit = self.search_page(children_jql("DEMO-1"))["issues"]
+        self.assertIn("Fresh title", [i["fields"]["summary"] for i in hit])
 
     def test_editmeta_and_pick_list_edits(self) -> None:
         meta = self.jira("GET", "issue/DEMO-5/editmeta")["fields"]

@@ -53,6 +53,64 @@ export function mergeDelta(issues, delta, keep) {
   return { issues: [...fresh, ...issues.filter((i) => !drop.has(i.key))], changed: true };
 }
 
+/**
+ * Generation counters that keep a slow, older answer from overwriting a newer view. `full()`
+ * starts a full load and returns its `current()` check: false once another full load started.
+ * `delta()` starts a delta and returns {current, newest}: `current()` is false once any full load
+ * or a newer delta started (its result must be dropped); `newest()` only once a newer delta
+ * started (whether its error is still worth reporting).
+ */
+export function createLoads() {
+  let full = 0, delta = 0;
+  return {
+    full() {
+      const f = ++full;
+      return () => f === full;
+    },
+    delta() {
+      const f = full, d = ++delta;
+      return { current: () => f === full && d === delta, newest: () => d === delta };
+    },
+  };
+}
+
+/**
+ * What to do with a delta page: "drop" (superseded by a newer load), "reload" (more changes than
+ * one page: a full reload is cheaper and complete), or "merge".
+ */
+export function deltaStep(page, current) {
+  if (!current) return "drop";
+  if (page && page.nextPageToken && !page.isLast) return "reload";
+  return "merge";
+}
+
+/**
+ * What else an auto-refresh reloads: {epics, detail}. Epic progress after the periodic full reload
+ * or when an epic (`isEpic`) or an epic's child changed; the open issue `current` when it, or one of
+ * its children, changed, or after a full reload. `delta`: the changes not handled before.
+ */
+export function followUps({ delta, fullReloaded, current, isEpic }) {
+  const parent = (i) => (i.fields && i.fields.parent ? i.fields.parent.key : null);
+  return {
+    epics: fullReloaded || delta.some((i) => isEpic(i) || (!!parent(i) && isEpic({ key: parent(i) }))),
+    detail: !!current && (fullReloaded || delta.some((i) => i.key === current || parent(i) === current)),
+  };
+}
+
+/**
+ * The delta items not handled before: consecutive delta windows overlap (see OVERLAP_MIN), so
+ * one change comes back in about three deltas in a row; reacting to it once (epic progress,
+ * detail reload) saves those repeated searches. `seen` (key -> `updated`) is updated in place
+ * and kept to the keys of the latest delta, so it stays small.
+ */
+export function unseenChanges(delta, seen) {
+  const out = (delta || []).filter((i) => seen.get(i.key) !== (i.fields || {}).updated);
+  const latest = new Map((delta || []).map((i) => [i.key, (i.fields || {}).updated]));
+  seen.clear();
+  for (const [k, v] of latest) seen.set(k, v);
+  return out;
+}
+
 /** "just now", "1 min ago", "12 min ago", "3 h ago" for a past timestamp (ms); "" when never. */
 export function sinceLabel(ts, now = Date.now()) {
   if (!ts) return "";

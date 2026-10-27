@@ -30,6 +30,13 @@ export function typeFields(typeId) {
   return fieldsCache.get(typeId);
 }
 
+let prioritiesOnce = null;
+/** loadPriorities, once: startup and a priority menu opened before it finished share the request (a failure can be retried). */
+export function priorities() {
+  if (!prioritiesOnce) prioritiesOnce = loadPriorities().catch((e) => { prioritiesOnce = null; throw e; });
+  return prioritiesOnce;
+}
+
 /**
  * Priorities in Jira's order. GET /priority/search needs an admin scope under OAuth, so they
  * come from the first standard issue type's create metadata (which the create dialog reuses),

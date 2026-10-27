@@ -8,8 +8,9 @@ import { avatar, statusIcon } from "./icons.js";
 import { statusKind } from "./status.js";
 import { labelHue } from "./issues.js";
 import { dayText } from "./activity.js";
-import { fieldText, localDay, dueState, parseLabels, parentAllowed, epicTypeName, epicJql, filterEpics, pickKind, pickChoices, pickValue, canSet } from "./props.js";
-import { updateFields } from "./edits.js";
+import { fieldText, localDay, dueState, parseLabels, parentAllowed, epicTypeName, epicJql, filterEpics, pickKind, pickChoices, pickValue, canSet, canAddRemove } from "./props.js";
+import { updateFields, updateOps } from "./edits.js";
+import { listOps } from "./bulk.js";
 import { openMenu, openPopover, closeMenu, activeMenu } from "./menu.js";
 import { issueTypes } from "./meta.js";
 import { typeIcon } from "./typeicons.js";
@@ -135,7 +136,9 @@ function pickMany(key, fid, name, meta, cur, anchor) {
   const save = () => {
     if ([...picked].sort().join() === before) return;
     const values = all.filter((c) => picked.has(String(c.id)));
-    updateFields(key, { [fid]: pickValue("many", values) }, key + ": " + name + " → " + (values.map(fieldText).join(", ") || "None"));
+    const msg = key + ": " + name + " → " + (values.map(fieldText).join(", ") || "None");
+    if (canAddRemove(meta)) updateOps(key, { [fid]: listOps(pickValue("many", cur), pickValue("many", values)) }, msg);
+    else updateFields(key, { [fid]: pickValue("many", values) }, msg);
   };
   const box = openPopover(anchor, [el("div", { class: "mh" }, key + " · " + name), search, list, el("div", { class: "mh mfoot" }, "Saved when you close this")],
     { label: name, cls: "multipick", onClose: save });
@@ -153,7 +156,7 @@ function pickMany(key, fid, name, meta, cur, anchor) {
 /** Label pills with remove buttons, plus "+" that turns into an input (Enter adds, Esc cancels). */
 function labelsEditor(key, labels) {
   const box = el("div", { class: "labels" });
-  const save = (next, msg) => updateFields(key, { labels: next }, msg);
+  const save = (next, msg) => updateOps(key, { labels: listOps(labels, next) }, msg);
   for (const l of labels) {
     const x = el("button", { class: "lx", type: "button", title: "Remove label " + l, "aria-label": "Remove label " + l }, icon(14, ICONS.close, ""));
     x.addEventListener("click", () => { if (!state.busy) save(labels.filter((y) => y !== l), key + ": removed label " + l); });
@@ -201,7 +204,10 @@ function dueEditor(key, due, finished) {
     input.dataset.editing = "1";
     wrap.replaceChildren(input);
     input.focus();
-    try { input.showPicker(); } catch (e) { /* needs a user gesture or unsupported: typing still works */ }
+    // While the native picker is open it takes the keys (Enter never reaches the input), so a
+    // change then is a date picked there: save it. A key reaching the input means it's closed.
+    let picking = false;
+    try { input.showPicker(); picking = true; } catch (e) { /* needs a user gesture or unsupported: typing still works */ }
     let done = false;
     const finish = (commit) => {
       if (done) return;
@@ -211,7 +217,9 @@ function dueEditor(key, due, finished) {
       // An empty or half-typed input is a cancel; removing the date is the × button's job.
       if (commit && v && v !== (due || "").slice(0, 10)) updateFields(key, { duedate: v }, key + ": due " + dayText(v));
     };
+    input.addEventListener("change", () => { if (picking) finish(true); });
     input.addEventListener("keydown", (e) => {
+      picking = false;
       if (e.key === "Enter") { e.preventDefault(); finish(true); }
       else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); finish(false); }
     });

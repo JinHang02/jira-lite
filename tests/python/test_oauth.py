@@ -347,6 +347,18 @@ class RefreshTest(OAuthAppTestCase):
         self.assertEqual(resp.status, 200)
         self.assertEqual(self.session(sid).access_token, "access-1")
 
+    def test_rate_limited_refresh_keeps_valid_token_and_session(self):
+        sid = self.sign_in()
+        self.expire(sid, seconds_left=30)
+        self.state.refresh_status = 429
+        try:
+            resp = self.request("GET", "/jira/myself", session=sid)
+        finally:
+            self.state.refresh_status = 0
+        self.assertEqual(resp.status, 200)
+        self.assertIsNotNone(self.session(sid))
+        self.assertEqual(self.session(sid).access_token, "access-1")
+
 
 class SecureCookieTest(unittest.TestCase):
     def test_cookies_are_secure_over_https(self):

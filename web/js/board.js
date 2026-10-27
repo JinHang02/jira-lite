@@ -14,8 +14,19 @@ import { selBox, clickSelect, bindSelect } from "./selection.js";
 import { typeBadge, typeKind, parentHint } from "./typeicons.js";
 import { actions } from "./actions.js";
 
+// A drag in progress: re-rendering would replace the dragged card and the columns under the
+// pointer (the drop would be lost), so renders wait until it ends.
+let dragging = false;
+let heldRender = false;
+const dragEnded = () => {
+  if (!dragging) return;
+  dragging = false;
+  if (heldRender) { heldRender = false; actions.renderMain(); }
+};
+
 /** Renders `list` (already filtered and ordered) as status columns into #board. */
 export function renderBoard(list) {
+  if (dragging) { heldRender = true; return; }
   const all = boardColumns(state.statuses, list, { showDone: state.showDone });
   const ticked = all.filter((c) => !state.hiddenStatuses.has(String(c.status.id)));
   const cols = state.boardEmpty ? ticked : ticked.filter((c) => c.items.length);
@@ -64,6 +75,7 @@ function dropTarget(box, status) {
     e.preventDefault();
     box.classList.remove("drop");
     const key = e.dataTransfer.getData("text/plain");
+    dragEnded();  // dragend fires after drop; show the move (moveToStatus re-renders) at once
     if (key) moveToStatus(key, status);
   });
 }
@@ -88,8 +100,8 @@ function card(i) {
     parentHint(f, state.epic, actions.openIssue),
     el("div", { class: "bot" }, state.showSubProgress ? subBadge(i, state.epics) : null, labelPills(f.labels), dueChip(i),
       el("span", { class: "spacer" }), avatar(f.assignee)));
-  c.addEventListener("dragstart", (e) => { e.dataTransfer.setData("text/plain", i.key); e.dataTransfer.effectAllowed = "move"; c.classList.add("dragging"); });
-  c.addEventListener("dragend", () => c.classList.remove("dragging"));
+  c.addEventListener("dragstart", (e) => { e.dataTransfer.setData("text/plain", i.key); e.dataTransfer.effectAllowed = "move"; c.classList.add("dragging"); dragging = true; });
+  c.addEventListener("dragend", () => { c.classList.remove("dragging"); dragEnded(); });
   bindSelect(c, i.key);
   return c;
 }
@@ -106,7 +118,7 @@ export async function moveToStatus(key, status) {
   }
   const t = trans.find((x) => String(x.to.id) === String(status.id));
   if (!t) return toast(key + " can't move from " + i.fields.status.name + " to " + status.name + " directly in this workflow.", true);
-  return transition(key, { id: t.id, label: t.to.name });
+  return transition(key, { id: t.id, label: t.to.name, to: t.to });
 }
 
 /** Loads the project's statuses (the board's columns). Failure leaves the board showing only statuses seen on issues. */

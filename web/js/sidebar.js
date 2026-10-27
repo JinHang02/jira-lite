@@ -13,6 +13,7 @@ import { openMenu } from "./menu.js";
 import { toggleHelp } from "./help.js";
 import { actions } from "./actions.js";
 import { oauthMode, signOut } from "./auth.js";
+import { withWrites } from "./edits.js";
 
 const NARROW = "(max-width: 760px)";
 const VIEW_ICON = '<path d="M8 2.25l5.75 3L8 8.25l-5.75-3z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M2.25 8.25L8 11.25l5.75-3M2.25 10.75L8 13.75l5.75-3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>';
@@ -213,12 +214,20 @@ export async function loadEpics() {
   }
   try {
     const page = await jira.searchPage(epicsJql(state.cfg.project), { fields: ["summary", "status"], maxResults: EPIC_LIMIT });
-    const epics = page.issues || [];
+    // Search lags behind our own writes: let the fresh copies of written issues win (overlay.js).
+    const openEpic = (i) => ((i.fields.issuetype || {}).hierarchyLevel === 1) && ((i.fields.status || {}).statusCategory || {}).key !== "done";
+    const epics = await withWrites(page.issues || [], openEpic);
     const keys = epics.map((e) => e.key);
-    const kids = [];
-    for (const part of chunk(keys)) kids.push(...await jira.searchFields(epicChildrenJql(part), ["status", "parent"]));
+    let kids = [];
+    const partial = new Set();  // epics whose children were cut off at the page limit
+    for (const part of chunk(keys)) {
+      const r = await jira.searchPages(epicChildrenJql(part), { fields: ["status", "parent"] });
+      kids.push(...r.issues);
+      if (r.more) part.forEach((k) => partial.add(k));
+    }
+    kids = await withWrites(kids, (i) => !!i.fields.parent && keys.includes(i.fields.parent.key));
     if (seq !== epicsSeq) return;
-    state.epics = epicEntries(epics, epicProgress(keys, kids));
+    state.epics = epicEntries(epics, epicProgress(keys, kids), partial);
     for (const e of state.epics) state.epicInfo.set(e.key, { key: e.key, summary: e.summary });
     state.epicsState = "ok";
     if (state.loaded) actions.renderMain();  // epic rows' "2/5" badges count these children
@@ -361,7 +370,7 @@ function epicNav(e) {
   return el("button", {
     class: "nav epic" + (on ? " on" : ""), "aria-current": on ? "page" : null, "data-epic": e.key,
     title: e.key + " · " + e.summary + (e.total ? " — " + e.done + " of " + e.total + " done" : " — no child issues"), onclick: () => setEpic(e.key),
-  }, ring(e.done, e.total), el("span", { class: "ename" }, e.summary), el("span", { class: "frac" }, e.total ? e.done + "/" + e.total : ""));
+  }, ring(e.done, e.total), el("span", { class: "ename" }, e.summary), el("span", { class: "frac" }, e.total ? e.done + "/" + e.total + (e.more ? "+" : "") : ""));
 }
 
 /** "People" header (collapsible), filter box, up to PEOPLE_LIMIT people and "Show all (N)". */

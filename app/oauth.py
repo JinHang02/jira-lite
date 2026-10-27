@@ -96,7 +96,8 @@ class AtlassianClient:
         """Get a new access token (and a NEW refresh token).
 
         Raises :class:`InvalidGrant` when Atlassian refuses the refresh token
-        (any 4xx), :class:`OAuthError` on transient failures."""
+        (a 4xx other than 408/429), :class:`OAuthError` on transient failures
+        (rate limit, timeout, 5xx), which keep a still-valid access token."""
         if not refresh_token:
             raise InvalidGrant("No refresh token; sign in again.")
         status, payload = self._token_request({
@@ -105,7 +106,7 @@ class AtlassianClient:
             "client_secret": self._client_secret,
             "refresh_token": refresh_token,
         })
-        if 400 <= status < 500:
+        if 400 <= status < 500 and status not in (408, 429):
             raise InvalidGrant("Atlassian refused the refresh token (HTTP %d %s)."
                                % (status, _error_code(payload)))
         if status != 200:

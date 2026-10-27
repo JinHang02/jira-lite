@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { fieldText, localDay, dueState, parseLabels, requiredCustomFields, parentAllowed, epicTypeName, epicJql, filterEpics, pickKind, pickChoices, pickValue, canSet, ancestry } from "../../web/js/props.js";
+import { fieldText, localDay, dueState, parseLabels, requiredCustomFields, parentAllowed, epicTypeName, epicJql, filterEpics, pickKind, pickChoices, pickValue, canSet, canAddRemove, ancestry } from "../../web/js/props.js";
 
 test("fieldText: options, versions, users, arrays, scalars", () => {
   assert.equal(fieldText(null), "");
@@ -102,6 +102,9 @@ test("pickChoices hides archived/disabled values unless set; pickValue shapes th
   assert.equal(canSet({ operations: ["set"] }), true);
   assert.equal(canSet({ operations: [] }), false);
   assert.equal(canSet(undefined), false);
+  assert.equal(canAddRemove({ operations: ["set", "add", "remove"] }), true);
+  assert.equal(canAddRemove({ operations: ["set", "add"] }), false);  // a whole-list PUT then
+  assert.equal(canAddRemove(undefined), false);
 });
 
 test("ancestry: parent chain top first, via the lookup; stops on cycles", () => {

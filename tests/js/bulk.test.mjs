@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   toggleKey, range, extendRange, orderedSelection, pruneSelection, unionTargets, statusPlan, priorityPlan,
-  assigneePlan, labelsPlan, knownLabels, runPool, statusSummary, fieldSummary, firstError,
+  assigneePlan, labelsPlan, listOps, knownLabels, runPool, statusSummary, fieldSummary, firstError,
 } from "../../web/js/bulk.js";
 
 const st = (id, name, cat) => ({ id, name, statusCategory: { key: cat } });
@@ -63,13 +63,21 @@ test("priorityPlan and assigneePlan skip issues that already have the value", ()
   assert.deepEqual(assigneePlan(people, null), [{ key: "K-1", accountId: null }]);
 });
 
-test("labelsPlan merges with the existing labels and skips issues that have them all", () => {
+test("labelsPlan adds only missing labels (add verbs) and skips issues that have them all", () => {
   const issues = [issue("K-1", TODO, { labels: ["ux", "web"] }), issue("K-2", TODO, { labels: ["urgent"] }), issue("K-3", TODO)];
-  assert.deepEqual(labelsPlan(issues, ["urgent", "urgent"]), [
-    { key: "K-1", fields: { labels: ["ux", "web", "urgent"] } },
-    { key: "K-3", fields: { labels: ["urgent"] } },
+  assert.deepEqual(labelsPlan(issues, ["urgent", "urgent", "ux"]), [
+    { key: "K-1", update: { labels: [{ add: "urgent" }] } },
+    { key: "K-2", update: { labels: [{ add: "ux" }] } },
+    { key: "K-3", update: { labels: [{ add: "urgent" }, { add: "ux" }] } },
   ]);
   assert.deepEqual(labelsPlan(issues, []), []);
+});
+
+test("listOps: adds then removes, by id for objects; nothing changed → []", () => {
+  assert.deepEqual(listOps(["a", "b"], ["b", "c"]), [{ add: "c" }, { remove: "a" }]);
+  assert.deepEqual(listOps([{ id: "1" }], [{ id: "1" }, { id: "2" }]), [{ add: { id: "2" } }]);
+  assert.deepEqual(listOps([{ id: "1" }], [{ id: 1 }]), []);
+  assert.deepEqual(listOps(undefined, []), []);
 });
 
 test("knownLabels ranks by frequency, then name", () => {

@@ -5,6 +5,7 @@ import { el, icon, ICONS, toast } from "./dom.js";
 import { showModal, closeModal, activeModal } from "./modal.js";
 import { withoutIssue, deleteWarning, deleteTyped } from "./issues.js";
 import { actions } from "./actions.js";
+import { settle } from "./edits.js";
 
 /** Asks to confirm deleting `key` (and its sub-tasks), then deletes it. */
 export function confirmDelete(key) {
@@ -12,7 +13,8 @@ export function confirmDelete(key) {
   const issue = state.known.get(key) || state.issues.find((i) => i.key === key);
   const f = (issue && issue.fields) || {};
   const subtasks = (f.subtasks || []).length;
-  const children = [...state.known.values()].filter((i) => i.fields && i.fields.parent && i.fields.parent.key === key && !(i.fields.issuetype || {}).subtask).length;
+  const childKeys = [...state.known.values()].filter((i) => i.fields && i.fields.parent && i.fields.parent.key === key && !(i.fields.issuetype || {}).subtask).map((i) => i.key);
+  const children = childKeys.length;
 
   const input = el("input", { class: "delinput", placeholder: "delete", autocomplete: "off", spellcheck: "false", "aria-label": "Type delete to confirm" });
   const del = el("button", { class: "btn danger", type: "button", disabled: "" }, "Delete");
@@ -43,8 +45,9 @@ export function confirmDelete(key) {
     toast("Deleted " + key);
     // The view showed this epic's children: back to whose issues it was (setWho also clears the epic).
     if (state.epic === key) return actions.setWho(state.who);
-    actions.sync();
-    actions.loadEpics();
+    // Its sub-tasks went with it; an epic's children lost their parent; the parent lost a sub-task.
+    const subKeys = (f.subtasks || []).map((s) => s.key);
+    settle([key, ...childKeys], { deleted: [key, ...subKeys] });
   };
   del.addEventListener("click", run);
   input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); run(); } });

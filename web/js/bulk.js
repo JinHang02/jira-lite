@@ -97,16 +97,29 @@ export function assigneePlan(issues, accountId) {
 }
 
 /**
- * Adding `labels` to each issue, keeping its existing ones (a PUT replaces the whole list):
- * [{key, fields: {labels}}] for the issues that lack at least one of them.
+ * Adding `labels` to each issue: [{key, update: {labels: [{add}]}}] for the issues that lack at
+ * least one of them. Jira's `add` verb keeps every existing label, also ones added since we loaded
+ * the issue (sending the whole list in `fields` would drop those).
  */
 export function labelsPlan(issues, labels) {
   const add = [...new Set(labels || [])];
   return issues.map((i) => {
     const have = i.fields.labels || [];
     const missing = add.filter((l) => !have.includes(l));
-    return missing.length ? { key: i.key, fields: { labels: [...have, ...missing] } } : null;
+    return missing.length ? { key: i.key, update: { labels: missing.map((l) => ({ add: l })) } } : null;
   }).filter(Boolean);
+}
+
+/**
+ * Jira `update` verbs that turn the list `before` into `after` ([{add: v}, {remove: v}] in that
+ * order), comparing by `id` for objects; [] when nothing changed. Unlike a `fields` PUT of the
+ * whole list, it leaves values someone else added or removed meanwhile alone.
+ */
+export function listOps(before, after) {
+  const id = (v) => (v && typeof v === "object" ? String(v.id) : String(v));
+  const had = new Set((before || []).map(id)), has = new Set((after || []).map(id));
+  return [...(after || []).filter((v) => !had.has(id(v))).map((v) => ({ add: v })),
+    ...(before || []).filter((v) => !has.has(id(v))).map((v) => ({ remove: v }))];
 }
 
 /** Every label used by `issues`, by how often it occurs (then by name). */

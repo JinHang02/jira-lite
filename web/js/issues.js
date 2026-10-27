@@ -33,7 +33,7 @@ export function progress(children) {
  */
 export function childProgress(issue, epics) {
   const e = (epics || []).find((x) => x.key === issue.key);
-  if (e && e.total) return { done: e.done, total: e.total, epic: true };
+  if (e && e.total) return { done: e.done, total: e.total, epic: true, more: !!e.more };
   return { ...progress(((issue || {}).fields || {}).subtasks), epic: false };
 }
 
@@ -157,3 +157,6 @@ export function deleteWarning({ subtasks = 0, children = 0 } = {}) {
 
 /** True once the confirmation box says "delete" (case and surrounding spaces ignored). */
 export const deleteTyped = (text) => String(text || "").trim().toLowerCase() === "delete";
+
+/** A copy of `issues`, oldest created first (how Jira lists sub-issues). Stable. */
+export const byCreated = (issues) => [...issues].sort((a, b) => time(a.fields.created) - time(b.fields.created));

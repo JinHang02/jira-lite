@@ -37,9 +37,6 @@ export function attachMentions(ta, mentions = new Map()) {
   return mentions;
 }
 
-/** True while the picker is open (for tests/e2e and other key handlers). */
-export const mentionPickerOpen = () => !!open;
-
 function close() {
   if (!open) return;
   open.box.remove();
