@@ -24,6 +24,7 @@ function sameFields(a, b) {
  * A store of issues known to be newer than the search index. `now` is injectable for tests.
  *   put(issue)  an issue just fetched by key after a write
  *   drop(key)   an issue just deleted
+ *   update(issue), missing(list, keep)  re-check what `apply` would add (edits.withWrites)
  *   apply(list, keep, {add}) -> list with the fresher copies (see below)
  */
 export function createOverlay({ ttl = TTL_MS, now = () => Date.now() } = {}) {
@@ -41,9 +42,20 @@ export function createOverlay({ ttl = TTL_MS, now = () => Date.now() } = {}) {
     drop(key) {
       entries.set(key, { issue: null, at: now() });
     },
+    /** Swaps in a re-read copy of a remembered issue, keeping its age (so it still expires). */
+    update(issue) {
+      const e = issue && entries.get(issue.key);
+      if (e) e.issue = issue;
+    },
     get(key) {
       const e = entries.get(key);
       return e ? e.issue : undefined;
+    },
+    /** Keys of the remembered issues `apply` would add to `list` (missing from it, and `keep`ing). */
+    missing(list, keep) {
+      prune();
+      const seen = new Set(list.map((i) => i.key));
+      return [...entries].filter(([k, e]) => e.issue && !seen.has(k) && keep(e.issue)).map(([k]) => k);
     },
     get size() { prune(); return entries.size; },
 

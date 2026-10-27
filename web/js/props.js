@@ -63,6 +63,9 @@ export function pickValue(kind, picked) {
 /** True if editmeta lets the user set the field (e.g. reporter needs "Modify Reporter"). */
 export const canSet = (meta) => !!(meta && (meta.operations || []).includes("set"));
 
+/** True if editmeta takes the `add` and `remove` verbs for the list field (else only a whole-list `set`). */
+export const canAddRemove = (meta) => !!meta && ["add", "remove"].every((op) => (meta.operations || []).includes(op));
+
 // ---- parent (epic) ----
 
 /**

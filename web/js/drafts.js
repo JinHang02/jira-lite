@@ -6,21 +6,23 @@
 // A draft: {key, kind: "title" | "description" | "comment", id?, text, mentions?: [[name, accountId]],
 //           kept?: [ADF node], base?: string}  (description: the ⟦n⟧ blocks and the Markdown it started from)
 
-const live = new Set();
+const live = new Map();  // snapshot -> closed
 
 /**
  * Registers an open editor; `snapshot()` returns its draft, or null when there's nothing to keep
- * (closed, unchanged). Returns the unregister function.
+ * (closed, unchanged); `closed()` is true once the editor is gone. Editors closed with nothing
+ * left to keep are forgotten here, so the set stays small. Returns the unregister function.
  */
-export function track(snapshot) {
-  live.add(snapshot);
+export function track(snapshot, closed = () => false) {
+  for (const [s, c] of [...live]) if (c() && !s()) live.delete(s);
+  live.set(snapshot, closed);
   return () => live.delete(snapshot);
 }
 
 /** The drafts of every open editor (a closed editor's snapshot returns null and is dropped). */
 export function snapshotAll() {
   const out = [];
-  for (const s of [...live]) {
+  for (const s of [...live.keys()]) {
     const d = s();
     if (d) out.push(d);
     else live.delete(s);

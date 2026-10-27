@@ -8,7 +8,7 @@ import { statusIcon, prioIcon, avatar, logo } from "./icons.js";
 import { renderAdf, textToAdf, copyText } from "./adf.js";
 import { toMarkdown, fromMarkdown } from "./markdown.js";
 import { isImage } from "./attachments.js";
-import { statusMenu, priorityMenu, assigneeMenu, updateFields } from "./edits.js";
+import { statusMenu, priorityMenu, assigneeMenu, updateFields, withWrites } from "./edits.js";
 import { typeFields } from "./meta.js";
 import { requiredCustomFields, ancestry } from "./props.js";
 import { renderProps, typeMenu } from "./propsview.js";
@@ -23,7 +23,6 @@ import { bindImages } from "./descimages.js";
 import { confirmDelete } from "./deleteview.js";
 import { openViewer } from "./viewer.js";
 import { setDisplay } from "./display.js";
-import { writes } from "./overlay.js";
 import { byCreated } from "./issues.js";
 import { track, parseDrafts, draftsFor } from "./drafts.js";
 
@@ -131,7 +130,8 @@ export async function loadDetail() {
     ]);
     if (stale()) return;
     // The search index may not list a just-created sub-issue (or still list a moved one) yet.
-    const children = byCreated(writes.apply(childPage.issues || [], (c) => !!c.fields.parent && c.fields.parent.key === key));
+    const children = byCreated(await withWrites(childPage.issues || [], (c) => !!c.fields.parent && c.fields.parent.key === key));
+    if (stale()) return;
     const childrenMore = jira.hasMore(childPage);  // over 100: only the first page is shown
     if (metaSig(issue) !== metaSig(known)) meta = await editMeta(key, metaSig(issue));
     const typeId = issue.fields.issuetype ? issue.fields.issuetype.id : null;
@@ -361,7 +361,7 @@ function editTitle(h1, key, old, draft) {
   ta.value = draft ? draft.text : old;
   let saving = null;  // the title being saved: kept as a draft if that very save finds the session ended
   track(() => (saving !== null ? { key, kind: "title", text: saving }
-    : ta.isConnected && ta.value !== old ? { key, kind: "title", text: ta.value } : null));
+    : ta.isConnected && ta.value !== old ? { key, kind: "title", text: ta.value } : null), () => !ta.isConnected);
   const fit = () => { ta.style.height = "auto"; ta.style.height = ta.scrollHeight + "px"; };
   ta.addEventListener("input", fit);
   h1.replaceWith(ta);
@@ -403,7 +403,7 @@ function editDescription(holder, key, doc, draft) {
   ta.value = draft ? draft.text : original;
   const mentions = attachMentions(ta, draft && draft.mentions ? new Map(draft.mentions) : mentionsOf(doc));
   track(() => (ta.isConnected && ta.value !== original
-    ? { key, kind: "description", text: ta.value, kept, base: original, mentions: [...mentions] } : null));
+    ? { key, kind: "description", text: ta.value, kept, base: original, mentions: [...mentions] } : null), () => !ta.isConnected);
   const save = el("button", { class: "btn primary", type: "button" }, "Save");
   const cancel = el("button", { class: "btn", type: "button" }, "Cancel");
   const hint = (changed ? "Changed in Jira since you started: saving replaces it · " : "") +

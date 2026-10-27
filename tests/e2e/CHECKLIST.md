@@ -31,6 +31,7 @@ Start the mock with `--index-lag-ms 5000` (search trails writes by 5 s, like Jir
 - [ ] Edit a title → the list row shows it at once. Move an issue to Done / reassign it away → it leaves "My issues" at once and stays gone after `r`.
 - [ ] Bulk priority on two selected rows → both rows update at once. Create an issue (All issues) → it appears at once; delete it → gone, and `r` doesn't bring it back.
 - [ ] Add a label while someone else added another in Jira meanwhile → both labels remain (writes use `update` add/remove).
+- [ ] Edit an issue's title, then unassign it straight in Jira (`PUT /rest/api/3/issue/{key}/assignee` on the mock) → `r` drops it from "My issues" (our remembered copy doesn't bring it back).
 
 ## Cut-offs, sign-in drafts, search errors
 - [ ] `POST http://127.0.0.1:9900/__mock/config?maxPage=1`, reload: the count shows "5+" (tooltip explains), DEMO-4's sub-issues header "1/1+ done"; give an epic over 5 children → its sidebar progress shows "n/m+". `?maxPage=100` restores.

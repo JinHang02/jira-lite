@@ -14,6 +14,7 @@ import { activeMenu } from "./menu.js";
 import { syncSelection } from "./selection.js";
 import { actions } from "./actions.js";
 import { writes } from "./overlay.js";
+import { withWrites } from "./edits.js";
 
 const DELTA_PAGE = 100;
 const loads = createLoads();  // a full load supersedes everything older; a delta only older deltas
@@ -40,10 +41,12 @@ async function fullReload() {
   const { cfg, who, showDone, epic } = state;
   const started = Date.now();
   try {
-    const { issues: out, more } = await jira.searchPages(buildJql({ project: cfg.project, who, showDone, epic }));
+    const { issues: found, more } = await jira.searchPages(buildJql({ project: cfg.project, who, showDone, epic }));
     if (!current()) return;  // a newer load started meanwhile
+    const out = await withWrites(found, (i) => matchesView(i, viewFilter()));  // the index may not have our latest writes yet
+    if (!current()) return;
     state.listMore = more;
-    state.issues = writes.apply(out, (i) => matchesView(i, viewFilter()));  // the index may not have our latest writes yet
+    state.issues = out;
     state.loaded = true;
     state.loadError = "";
     state.lastSync = state.lastFull = started;

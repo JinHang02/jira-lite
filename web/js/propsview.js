@@ -8,7 +8,7 @@ import { avatar, statusIcon } from "./icons.js";
 import { statusKind } from "./status.js";
 import { labelHue } from "./issues.js";
 import { dayText } from "./activity.js";
-import { fieldText, localDay, dueState, parseLabels, parentAllowed, epicTypeName, epicJql, filterEpics, pickKind, pickChoices, pickValue, canSet } from "./props.js";
+import { fieldText, localDay, dueState, parseLabels, parentAllowed, epicTypeName, epicJql, filterEpics, pickKind, pickChoices, pickValue, canSet, canAddRemove } from "./props.js";
 import { updateFields, updateOps } from "./edits.js";
 import { listOps } from "./bulk.js";
 import { openMenu, openPopover, closeMenu, activeMenu } from "./menu.js";
@@ -136,8 +136,9 @@ function pickMany(key, fid, name, meta, cur, anchor) {
   const save = () => {
     if ([...picked].sort().join() === before) return;
     const values = all.filter((c) => picked.has(String(c.id)));
-    const ops = listOps(pickValue("many", cur), pickValue("many", values));
-    updateOps(key, { [fid]: ops }, key + ": " + name + " → " + (values.map(fieldText).join(", ") || "None"));
+    const msg = key + ": " + name + " → " + (values.map(fieldText).join(", ") || "None");
+    if (canAddRemove(meta)) updateOps(key, { [fid]: listOps(pickValue("many", cur), pickValue("many", values)) }, msg);
+    else updateFields(key, { [fid]: pickValue("many", values) }, msg);
   };
   const box = openPopover(anchor, [el("div", { class: "mh" }, key + " · " + name), search, list, el("div", { class: "mh mfoot" }, "Saved when you close this")],
     { label: name, cls: "multipick", onClose: save });

@@ -543,6 +543,17 @@ async (page) => {
     expect(await page.evaluate(() => !document.querySelector('#list .row[data-key="DEMO-6"]') && !!document.querySelector('#list .row[data-key="DEMO-23"]')), "list wrong after catch-up");
     expect((await page.request.post(MOCK + "/__mock/config?indexLagMs=0")).status() === 204, "lag off");
   });
+  await check("fresh: a colleague moving our just-edited issue out of the view isn't undone by a full refresh", async () => {
+    await open("DEMO-23");
+    await page.click("#detail h1.dtitle");
+    await page.fill("#detail textarea.dtitle", "Edited, then unassigned elsewhere"); await page.keyboard.press("Enter");
+    await fast(() => document.querySelector('#list .row[data-key="DEMO-23"]')?.textContent.includes("Edited, then unassigned"));
+    const r = await page.request.put(MOCK + "/rest/api/3/issue/DEMO-23/assignee", { headers: { Authorization: "Basic colleague" }, data: { accountId: null } });
+    expect(r.status() === 204, "colleague unassign " + r.status());
+    await closePanel();
+    await fullRefresh();
+    await fast((k) => !document.querySelector('#list .row[data-key="' + k + '"]'), "DEMO-23");
+  });
 
   await check("edge: session ends mid-edit — title, description and comment edits come back after signing in", async () => {
     await open("DEMO-4");

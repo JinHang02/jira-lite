@@ -101,3 +101,20 @@ test("apply: same `updated` but different values (a parent's new sub-task) keeps
   assert.equal(o.apply([narrow], all)[0], narrow);
   assert.equal(o.size, 0);
 });
+
+test("missing / update: what apply would add can be re-read first; a stale copy then stays out", () => {
+  const c = clock();
+  const o = createOverlay({ now: c.now });
+  o.put(iss("A-1", T0, { assignee: "me" }));
+  o.put(iss("A-2", T0, { assignee: "me" }));
+  const mine = (i) => i.fields.assignee === "me";
+  assert.deepEqual(o.missing([iss("A-2", T0, { assignee: "me" })], mine), ["A-1"]);
+  // Re-read by key: a colleague unassigned it since our write, so it no longer belongs.
+  c.t += 1000;
+  o.update(iss("A-1", T1, { assignee: "bob" }));
+  assert.deepEqual(o.apply([], mine).map((i) => i.key), ["A-2"]);
+  o.update(iss("A-9", T1));  // not remembered: ignored
+  assert.equal(o.get("A-9"), undefined);
+  c.t += TTL_MS;  // update kept the age: still expires
+  assert.equal(o.size, 0);
+});

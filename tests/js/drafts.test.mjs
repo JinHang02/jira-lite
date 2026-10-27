@@ -34,3 +34,16 @@ test("draftsFor: this issue's drafts, the rest kept", () => {
   assert.deepEqual(mine.map((d) => d.text), ["a"]);
   assert.deepEqual(rest.map((d) => d.text), ["b"]);
 });
+
+test("track: editors closed with nothing to keep are forgotten when the next one opens", () => {
+  snapshotAll();  // start empty
+  let open = true;
+  const saving = true;
+  track(() => (open ? { key: "A-1", kind: "title", text: "a" } : null), () => !open);
+  track(() => (saving ? { key: "A-2", kind: "title", text: "b" } : null), () => true);  // closed, saving: kept
+  track(() => null, () => false);  // open but unchanged: kept
+  open = false;
+  const stop = track(() => ({ key: "A-3", kind: "comment", id: "1", text: "c" }));
+  assert.deepEqual(snapshotAll().map((d) => d.key), ["A-2", "A-3"]);
+  stop();
+});

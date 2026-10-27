@@ -38,6 +38,18 @@ export async function settle(keys, { deleted = [], detail = true } = {}) {
 }
 
 /**
+ * `writes.apply` for a search result, after re-reading by key the remembered issues it would add:
+ * search leaves one out either because the index lags (ours is right) or because someone else
+ * moved it out of the result since our write (ours is stale and must not come back).
+ */
+export async function withWrites(list, keep) {
+  await Promise.all(writes.missing(list, keep).map((k) => jira.getIssue(k, jira.FIELDS).then((i) => writes.update(i), (e) => {
+    if (e.status === 404) writes.drop(k);
+  })));
+  return writes.apply(list, keep);
+}
+
+/**
  * Shows `fields` on the issue right away (an optimistic update); `settle` then replaces it with
  * what Jira stored, which also undoes it when the write failed.
  */

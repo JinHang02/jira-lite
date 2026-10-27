@@ -107,7 +107,7 @@ function editComment(key, c, card, body, draft) {
   ta.value = draft ? draft.text : old;
   const mentions = attachMentions(ta, draft && draft.mentions ? new Map(draft.mentions) : mentionsOf(c.body));
   track(() => (ta.isConnected && ta.value.trim() !== old.trim()
-    ? { key, kind: "comment", id: String(c.id), text: ta.value, mentions: [...mentions] } : null));
+    ? { key, kind: "comment", id: String(c.id), text: ta.value, mentions: [...mentions] } : null), () => !ta.isConnected);
   const save = el("button", { class: "btn primary", type: "button" }, "Save");
   const cancel = el("button", { class: "btn", type: "button" }, "Cancel");
   const msg = el("span", { class: "cmsg" }, "⌘↵ to save · esc to cancel");
